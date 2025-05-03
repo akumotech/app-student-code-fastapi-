@@ -3,13 +3,15 @@ from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
 ## local imports
-from .schemas import TokenData, UserInDB
+from .schemas import TokenData, UserInDB, User
 from .config import SECRET_KEY, ALGORITHM
 from .crud import get_user_by_email
 from .security import pwd_context
+from .database import get_session
 
-oauth_2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth")
+oauth_2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -38,16 +40,18 @@ def authenticate_user(db, email: str, password: str):
 
     return user
 
-async def get_current_user(token: str = Depends(oauth_2_scheme)):
-    credential_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
-
+async def get_current_user(token: str = Depends(oauth_2_scheme), db: Session = Depends(get_session)):
+    credential_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, 
+        detail="Could not validate credentials", 
+        headers={"WWW-Authenticate": "Bearer"}
+    )
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print("PAYLOAD: ", payload)
         email: str = payload.get("sub")
         if email is None:
             raise credential_exception
-
         token_data = TokenData(email=email)
     except JWTError:
         raise credential_exception
@@ -58,8 +62,40 @@ async def get_current_user(token: str = Depends(oauth_2_scheme)):
     
     return user
 
+
 async def get_current_active_user(current_user: UserInDB = Depends(get_current_user)):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive User")
 
     return current_user
+
+
+def verify_access_token(request):
+    # Extract the token from the request
+    token = get_token_from_request(request)
+    
+    try:
+        # Decode and verify the token using the secret key and algorithm
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        # Raise an HTTPException with status code 401 if the token has expired
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        # Raise an HTTPException with status code 401 if the token is invalid
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+from fastapi import Request, HTTPException, status
+
+def get_token_from_request(request: Request) -> str:
+    auth_header = request.headers.get("Authorization")
+    
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = auth_header.split(" ")[1]
+    return token

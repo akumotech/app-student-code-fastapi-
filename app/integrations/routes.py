@@ -8,12 +8,13 @@ from sqlmodel import Session, select
 from app.auth.models import User
 from app.auth.database import engine
 from cryptography.fernet import Fernet
+from app.auth.utils import get_current_active_user
 
 router = APIRouter()
 
 WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
 WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
-REDIRECT_URI = "http://localhost:8000/integrations/wakatime/callback"
+REDIRECT_URI = "http://localhost:8000/wakatime/callback"
 FERNET_KEY = os.getenv("FERNET_KEY", Fernet.generate_key())
 fernet = Fernet(FERNET_KEY)
 
@@ -38,29 +39,33 @@ def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_se
 
 @router.get("/wakatime/authorize")
 def wakatime_authorize(email: str):
-    # In production, use a secure state parameter to prevent CSRF and link the user
+    # Store email using state parameter
     url = (
         "https://wakatime.com/oauth/authorize"
         f"?client_id={WAKATIME_CLIENT_ID}"
         "&response_type=code"
-        f"&redirect_uri={REDIRECT_URI}?email={email}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&state={email}"
         "&scope=read_logged_time"
     )
-    return RedirectResponse(url)
+    return url
 
 @router.get("/wakatime/callback")
-async def wakatime_callback(request: Request, session: Session = Depends(get_session)):
+async def wakatime_callback(request: Request, session: Session = Depends(get_session), current_user: User = Depends(get_current_active_user)):
     code = request.query_params.get("code")
-    email = request.query_params.get("email")
-    if not code or not email:
-        raise HTTPException(status_code=400, detail="Missing code or email in callback")
+    email = request.query_params.get("state")  # Get email from state
+    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Continue as before...
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://wakatime.com/oauth/token",
             data={
                 "client_id": WAKATIME_CLIENT_ID,
                 "client_secret": WAKATIME_CLIENT_SECRET,
-                "redirect_uri": f"{REDIRECT_URI}?email={email}",
+                "redirect_uri": REDIRECT_URI,  # No email parameter here
                 "grant_type": "authorization_code",
                 "code": code,
             },

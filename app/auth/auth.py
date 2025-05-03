@@ -11,15 +11,15 @@ from . import crud, models, schemas
 from app.students.models import Student
 router = APIRouter()
 
-@router.get("/api/users/me/", response_model=User)
-async def read_users_me(current_user: User = Depends(get_current_active_user)):
+@router.get("/users/me/", response_model=None)
+async def read_users_me(
+    current_user = Depends(get_current_active_user), 
+    db: Session = Depends(get_session)
+):
     return current_user
 
-@router.get("/api/users/me/items", response_model=User)
-async def read_own_items(current_user: User = Depends(get_current_active_user)):
-    return [{"item_id": 1, "owner": current_user}]
 
-@router.post("/api/auth")
+@router.post("/login")
 async def login(data: LoginRequest, db: Session = Depends(get_session)):
     user = authenticate_user(db, data.email, data.password)
     if not user:
@@ -46,7 +46,7 @@ async def login(data: LoginRequest, db: Session = Depends(get_session)):
         }
     }
 
-@router.post("/api/users")
+@router.post("/signup")
 async def signup(data: SignupRequest, db: Session = Depends(get_session)):
     if crud.get_user_by_email(db, data.email):
         return {
@@ -65,6 +65,6 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
         "message": "Signup successful"
     }
 
-@router.post("/api/logout")
+@router.post("/logout")
 async def logout():
     return {"message": "Successfully logged out."}
