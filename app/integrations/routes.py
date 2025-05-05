@@ -15,7 +15,7 @@ router = APIRouter()
 
 WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
 WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
-REDIRECT_URI = f"https://{os.getenv(FRONTEND_DOMAIN)}/callback"
+REDIRECT_URI = f"https://{os.getenv('FRONTEND_DOMAIN')}/callback"
 FERNET_KEY = os.getenv("FERNET_KEY", Fernet.generate_key())
 fernet = Fernet(FERNET_KEY)
 

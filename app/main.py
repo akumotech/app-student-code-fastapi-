@@ -36,7 +36,6 @@ EXCLUDE_PATHS = ["/signup", "/login", "/docs", "/openapi.json"]  # Add more if n
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
-        # Skip token validation for excluded paths
         if path in EXCLUDE_PATHS:
             return await call_next(request)
 
