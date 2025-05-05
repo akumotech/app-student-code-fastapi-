@@ -1,7 +1,7 @@
 import os
+import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-import httpx
 from app.integrations.wakatime import get_wakatime_stats
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -9,21 +9,19 @@ from app.auth.models import User
 from app.auth.database import engine
 from cryptography.fernet import Fernet
 from app.auth.utils import get_current_active_user
+from app.integrations.model import WakaTimeCallbackPayload, WakaTimeUsageRequest
 
 router = APIRouter()
 
 WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
 WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
-REDIRECT_URI = "http://localhost:8000/wakatime/callback"
+REDIRECT_URI = f"https://{os.getenv(FRONTEND_DOMAIN)}/callback"
 FERNET_KEY = os.getenv("FERNET_KEY", Fernet.generate_key())
 fernet = Fernet(FERNET_KEY)
 
 def get_session():
     with Session(engine) as session:
         yield session
-
-class WakaTimeUsageRequest(BaseModel):
-    email: str
 
 @router.post("/wakatime/usage")
 def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
@@ -50,34 +48,47 @@ def wakatime_authorize(email: str):
     )
     return url
 
-@router.get("/wakatime/callback")
-async def wakatime_callback(request: Request, session: Session = Depends(get_session), current_user: User = Depends(get_current_active_user)):
-    code = request.query_params.get("code")
-    email = request.query_params.get("state")  # Get email from state
+@router.post("/wakatime/callback")
+async def wakatime_callback(
+    payload: WakaTimeCallbackPayload,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
     
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Continue as before...
+    code = payload.code
+    state = payload.state  # You can use it if needed
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+
+    # Exchange code for access token
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://wakatime.com/oauth/token",
             data={
                 "client_id": WAKATIME_CLIENT_ID,
                 "client_secret": WAKATIME_CLIENT_SECRET,
-                "redirect_uri": REDIRECT_URI,  # No email parameter here
+                "redirect_uri": REDIRECT_URI,
                 "grant_type": "authorization_code",
                 "code": code,
             },
         )
+
         if response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Failed to get access token")
+            raise HTTPException(
+                status_code=400, detail="Failed to retrieve WakaTime access token"
+            )
+
         token_data = response.json()
-        # Find the user by email and store the access token
-        user = session.exec(select(User).where(User.email == email)).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        user.wakatime_access_token_encrypted = fernet.encrypt(token_data["access_token"].encode()).decode()
-        session.add(user)
+
+        # user = session.exec(select(User).where(User.email == email)).first()
+        # if not user:
+        #     raise HTTPException(status_code=404, detail="User not found")
+        current_user.wakatime_access_token_encrypted = fernet.encrypt(token_data["access_token"].encode()).decode()
+        session.add(current_user)
         session.commit()
         return {"message": "WakaTime access token saved for user.", "user_email": email}

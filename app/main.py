@@ -13,6 +13,13 @@ from app.auth.utils import verify_access_token
 
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def on_startup():
@@ -22,21 +29,18 @@ def on_startup():
 app.include_router(auth_router)
 app.include_router(integrations_router)
 app.include_router(students_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-EXCLUDE_PATHS = ["/signup", "/login", "/docs", "/openapi.json", "/wakatime/callback"]  # Add more if needed
+
+EXCLUDE_PATHS = ["/signup", "/login", "/docs", "/openapi.json"]  # Add more if needed
 
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         # Skip token validation for excluded paths
         if path in EXCLUDE_PATHS:
+            return await call_next(request)
+
+        if request.method == "OPTIONS":
             return await call_next(request)
 
         try:
