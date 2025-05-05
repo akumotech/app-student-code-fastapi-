@@ -59,15 +59,16 @@ async def wakatime_callback(
     current_user: User = Depends(get_current_active_user),
 ):
     code = payload.code
-    state = payload.state 
+    state = payload.state
+
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
-
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://wakatime.com/oauth/token",
+            headers={"Accept": "application/json"},  # 🚀 Ask for JSON response
             data={
                 "client_id": WAKATIME_CLIENT_ID,
                 "client_secret": WAKATIME_CLIENT_SECRET,
@@ -77,14 +78,26 @@ async def wakatime_callback(
             },
         )
 
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text}")
+
         if response.status_code != 200:
             raise HTTPException(
-                status_code=400, detail="Failed to retrieve WakaTime access token"
+                status_code=400,
+                detail=f"Failed to retrieve WakaTime access token: {response.status_code}, {response.text}",
             )
 
+        # ✅ Now it's JSON, so keep this
         token_data = response.json()
+        print(f"Token data: {token_data}")
 
-        current_user.wakatime_access_token_encrypted = fernet.encrypt(token_data["access_token"].encode()).decode()
-        session.add(current_user)
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Access token not found in response")
+
+        # Encrypt & save
+        current_user.wakatime_access_token_encrypted = fernet.encrypt(access_token.encode()).decode()
+        session.merge(current_user)
         session.commit()
-        return {"message": "WakaTime access token saved for user.", "user_email": current_user.email}
+
+        return {"message": "WakaTime access token saved for user."}
