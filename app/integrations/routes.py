@@ -9,6 +9,7 @@ from app.auth.models import User
 from app.auth.database import engine
 from cryptography.fernet import Fernet
 from app.auth.utils import get_current_active_user
+from app.auth.crud import get_user_by_email
 from app.integrations.model import WakaTimeCallbackPayload, WakaTimeUsageRequest
 
 router = APIRouter()
@@ -25,7 +26,10 @@ def get_session():
 
 @router.post("/wakatime/usage")
 def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == data.email)).first()
+    print("here")
+    user = get_user_by_email(session, data.email)
+         ##session.exec(select(User).where(User.email == data.email)).first()
+    print(user)
     if not user or not user.wakatime_access_token_encrypted:
         raise HTTPException(status_code=404, detail="User or WakaTime token not found")
     access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
@@ -54,13 +58,8 @@ async def wakatime_callback(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
     code = payload.code
-    state = payload.state  # You can use it if needed
-
+    state = payload.state 
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
@@ -85,10 +84,7 @@ async def wakatime_callback(
 
         token_data = response.json()
 
-        # user = session.exec(select(User).where(User.email == email)).first()
-        # if not user:
-        #     raise HTTPException(status_code=404, detail="User not found")
         current_user.wakatime_access_token_encrypted = fernet.encrypt(token_data["access_token"].encode()).decode()
         session.add(current_user)
         session.commit()
-        return {"message": "WakaTime access token saved for user.", "user_email": email}
+        return {"message": "WakaTime access token saved for user.", "user_email": current_user.email}

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class WakaTimeCallbackPayload(BaseModel):
@@ -6,4 +6,4 @@ class WakaTimeCallbackPayload(BaseModel):
     state: str | None = None 
 
 class WakaTimeUsageRequest(BaseModel):
-    email: str
+    email: EmailStr
