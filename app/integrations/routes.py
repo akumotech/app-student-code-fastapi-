@@ -17,19 +17,31 @@ router = APIRouter()
 WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
 WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
 REDIRECT_URI = f"https://{os.getenv('FRONTEND_DOMAIN')}/callback"
-FERNET_KEY = os.getenv("FERNET_KEY", Fernet.generate_key())
+FERNET_KEY = os.getenv("FERNET_KEY")
 fernet = Fernet(FERNET_KEY)
 
 def get_session():
     with Session(engine) as session:
         yield session
 
+@router.post("/wakatime/today")
+def wakatime_today(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
+    user = get_user_by_email(session, data.email)
+
+    if not user or not user.wakatime_access_token_encrypted:
+        raise HTTPException(status_code=404, detail="User or WakaTime token not found")
+    access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
+    try:
+        data_today = get_wakatime_today(access_token)
+        print(data_today)
+        return data_today
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.post("/wakatime/usage")
 def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
-    print("here")
     user = get_user_by_email(session, data.email)
          ##session.exec(select(User).where(User.email == data.email)).first()
-    print(user)
     if not user or not user.wakatime_access_token_encrypted:
         raise HTTPException(status_code=404, detail="User or WakaTime token not found")
     access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
