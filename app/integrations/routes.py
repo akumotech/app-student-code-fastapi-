@@ -97,7 +97,7 @@ async def wakatime_callback(
             raise HTTPException(status_code=400, detail="Access token not found in response")
 
         # Encrypt & save
-        current_user.wakatime_access_token_encrypted = fernet.encrypt(access_token.encode()).decode()
+        current_user.wakatime_access_token_encrypted = settings.fernet.encrypt(access_token.encode()).decode()
         session.merge(current_user)
         session.commit()
 

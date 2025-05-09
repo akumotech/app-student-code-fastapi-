@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.integrations.wakatime import get_wakatime_today
 from sqlmodel import Session, select
+from app.config import settings
 
 def start_scheduler():
     scheduler = BackgroundScheduler()
@@ -17,7 +18,7 @@ def fetch_and_save_all_users_wakatime_data():
         users = session.exec(select(User).where(User.wakatime_access_token_encrypted != None)).all()
         
         for user in users:
-            access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
+            access_token = settings.fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
             user_data = get_wakatime_today(access_token)
 
             data = user_data["data"]
