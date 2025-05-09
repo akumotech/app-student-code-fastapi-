@@ -5,7 +5,7 @@ from datetime import timedelta
 ## local imports
 from .schemas import Token, UserInDB, User, LoginRequest, SignupRequest, UserCreate
 from .utils import create_access_token, authenticate_user, get_current_active_user
-from .config import ACCESS_TOKEN_EXPIRE_MINUTES
+from app.config import settings
 from .database import get_session
 from . import crud, models, schemas
 from app.students.models import Student
@@ -28,7 +28,7 @@ async def login(data: LoginRequest, db: Session = Depends(get_session)):
             "message": "Invalid credentials",
             "error": "Login failed"
         }
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(
         data={"sub": user.email},
         expires_delta=access_token_expires

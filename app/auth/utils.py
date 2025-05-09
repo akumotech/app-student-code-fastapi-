@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 ## local imports
 from .schemas import TokenData, UserInDB, User
-from .config import SECRET_KEY, ALGORITHM
+from app.config import settings #SECRET_KEY, ALGORITHM
 from .crud import get_user_by_email
 from .security import pwd_context
 from .database import get_session
@@ -27,7 +27,7 @@ def create_access_token(data: dict, expires_delta: timedelta or None = None):
         expire = datetime.utcnow() + timedelta(minutes=15)
     
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, settings.ALGORITHM)
 
     return encoded_jwt
 

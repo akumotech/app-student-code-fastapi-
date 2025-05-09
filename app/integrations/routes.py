@@ -2,23 +2,17 @@ import os
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-from app.integrations.wakatime import get_wakatime_stats, get_wakatime_today
+from app.integrations.wakatime import fetch_today_data, fetch_stats_data
 from pydantic import BaseModel
 from sqlmodel import Session, select
 from app.auth.models import User
 from app.auth.database import engine
-from cryptography.fernet import Fernet
 from app.auth.utils import get_current_active_user
 from app.auth.crud import get_user_by_email
 from app.integrations.model import WakaTimeCallbackPayload, WakaTimeUsageRequest
+from app.config import settings
 
 router = APIRouter()
-
-WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
-WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
-REDIRECT_URI = f"https://{os.getenv('FRONTEND_DOMAIN')}/callback"
-FERNET_KEY = os.getenv("FERNET_KEY")
-fernet = Fernet(FERNET_KEY)
 
 def get_session():
     with Session(engine) as session:
@@ -27,27 +21,23 @@ def get_session():
 @router.post("/wakatime/today")
 def wakatime_today(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
     user = get_user_by_email(session, data.email)
-
     if not user or not user.wakatime_access_token_encrypted:
         raise HTTPException(status_code=404, detail="User or WakaTime token not found")
-    access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
+
     try:
-        data_today = get_wakatime_today(access_token)
-        print(data_today)
-        return data_today
+        return fetch_today_data(user, session)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.post("/wakatime/usage")
 def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_session)):
     user = get_user_by_email(session, data.email)
-         ##session.exec(select(User).where(User.email == data.email)).first()
     if not user or not user.wakatime_access_token_encrypted:
         raise HTTPException(status_code=404, detail="User or WakaTime token not found")
-    access_token = fernet.decrypt(user.wakatime_access_token_encrypted.encode()).decode()
+
     try:
-        stats = get_wakatime_stats(access_token)
-        return stats
+        return fetch_stats_data(user, session)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -56,9 +46,9 @@ def wakatime_authorize(email: str):
     # Store email using state parameter
     url = (
         "https://wakatime.com/oauth/authorize"
-        f"?client_id={WAKATIME_CLIENT_ID}"
+        f"?client_id={settings.WAKATIME_CLIENT_ID}"
         "&response_type=code"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"&redirect_uri={settings.REDIRECT_URI}"
         f"&state={email}"
         "&scope=read_logged_time"
     )
@@ -82,9 +72,9 @@ async def wakatime_callback(
             "https://wakatime.com/oauth/token",
             headers={"Accept": "application/json"},  # 🚀 Ask for JSON response
             data={
-                "client_id": WAKATIME_CLIENT_ID,
-                "client_secret": WAKATIME_CLIENT_SECRET,
-                "redirect_uri": REDIRECT_URI,
+                "client_id": settings.WAKATIME_CLIENT_ID,
+                "client_secret": settings.WAKATIME_CLIENT_SECRET,
+                "redirect_uri": settings.REDIRECT_URI,
                 "grant_type": "authorization_code",
                 "code": code,
             },
@@ -99,7 +89,6 @@ async def wakatime_callback(
                 detail=f"Failed to retrieve WakaTime access token: {response.status_code}, {response.text}",
             )
 
-        # ✅ Now it's JSON, so keep this
         token_data = response.json()
         print(f"Token data: {token_data}")
 
