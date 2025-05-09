@@ -1,13 +1,15 @@
 from sqlmodel import Field, SQLModel, Relationship
 from typing import Optional, List, Optional
+from pydantic import EmailStr
 
 class User(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    email: str
+    id: Optional[int] = Field(default=None, primary_key=True) ## id: int | None = Field(default=None, primary_key=True)
+    email: EmailStr
     name: str
-    disabled: bool | None = False
+    disabled: Optional[bool] = False ## bool | None = False
     password: str
     wakatime_access_token_encrypted: Optional[str] = None
+    wakatime_refresh_token_encrypted: Optional[str] = None
     
     daily_summaries: List["DailySummary"] = Relationship(back_populates="user")
     
