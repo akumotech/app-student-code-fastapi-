@@ -46,9 +46,8 @@ async def get_current_user(token: str = Depends(oauth_2_scheme), db: Session = D
         detail="Could not validate credentials", 
         headers={"WWW-Authenticate": "Bearer"}
     )
-    
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credential_exception
@@ -76,7 +75,7 @@ def verify_access_token(request):
     
     try:
         # Decode and verify the token using the secret key and algorithm
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
         # Raise an HTTPException with status code 401 if the token has expired

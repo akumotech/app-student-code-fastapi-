@@ -11,11 +11,8 @@ from . import crud, models, schemas
 from app.students.models import Student
 router = APIRouter()
 
-@router.get("/users/me/", response_model=None)
-async def read_users_me(
-    current_user = Depends(get_current_active_user), 
-    db: Session = Depends(get_session)
-):
+@router.get("/users/me/", response_model=User)
+async def read_users_me(current_user = Depends(get_current_active_user), db: Session = Depends(get_session)):
     return current_user
 
 
