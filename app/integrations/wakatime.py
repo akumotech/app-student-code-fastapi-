@@ -8,9 +8,9 @@ def refresh_wakatime_token(user: User, session: Session) -> str:
     refresh_token = settings.fernet.decrypt(user.wakatime_refresh_token_encrypted.encode()).decode()
 
     data = {
-        "client_id": settings.WAKATIME_CLIENT_ID,
-        "client_secret": settings.WAKATIME_CLIENT_SECRET,
-        "redirect_uri": settings.REDIRECT_URI,
+        "client_id": WAKATIME_CLIENT_ID,
+        "client_secret": WAKATIME_CLIENT_SECRET,
+        "redirect_uri": REDIRECT_URI,
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
     }

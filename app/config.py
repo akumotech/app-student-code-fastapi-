@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     WAKATIME_CLIENT_SECRET: str
     FRONTEND_DOMAIN: str
     FERNET_KEY: str
+    REDIRECT_URI: str
 
     class Config:
         env_file = ".env"
