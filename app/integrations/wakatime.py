@@ -3,20 +3,14 @@ from app.auth.models import User
 from sqlmodel import Session
 from app.config import settings
 
-WAKATIME_CLIENT_ID = os.getenv("WAKATIME_CLIENT_ID")
-WAKATIME_CLIENT_SECRET = os.getenv("WAKATIME_CLIENT_SECRET")
-REDIRECT_URI = f"https://{os.getenv('FRONTEND_DOMAIN')}/callback"
-FERNET_KEY = os.getenv("FERNET_KEY")
-
-
 def refresh_wakatime_token(user: User, session: Session) -> str:
     """Refresh WakaTime access token using refresh token."""
     refresh_token = settings.fernet.decrypt(user.wakatime_refresh_token_encrypted.encode()).decode()
 
     data = {
-        "client_id": WAKATIME_CLIENT_ID,
-        "client_secret": WAKATIME_CLIENT_SECRET,
-        "redirect_uri": REDIRECT_URI,
+        "client_id": settings.WAKATIME_CLIENT_ID,
+        "client_secret": settings.WAKATIME_CLIENT_SECRET,
+        "redirect_uri": settings.REDIRECT_URI,
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
     }
