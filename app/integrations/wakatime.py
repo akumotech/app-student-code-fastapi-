@@ -1,4 +1,6 @@
 import requests, os
+from datetime import datetime, timedelta
+
 from app.auth.models import User
 from sqlmodel import Session
 from app.config import settings
@@ -61,5 +63,18 @@ def fetch_today_data(user: User, session: Session):
 def fetch_stats_data(user: User, session: Session):
     """Fetch WakaTime last 7 days stats for user."""
     url = "https://wakatime.com/api/v1/users/current/stats/last_7_days"
+    response = wakatime_api_request(user, session, "GET", url)
+    return response.json()
+
+def fetch_stats_range(user: User, session: Session):
+    """Fetch WakaTime stats for today and the 6 days before."""
+    end_date = datetime.utcnow().date()  # today
+    start_date = end_date - timedelta(days=6)
+
+    url = (
+        f"https://wakatime.com/api/v1/users/current/stats"
+        f"?start={start_date}&end={end_date}"
+    )
+
     response = wakatime_api_request(user, session, "GET", url)
     return response.json()
