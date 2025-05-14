@@ -2,7 +2,7 @@ import os
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-from app.integrations.wakatime import fetch_today_data, fetch_stats_data
+from app.integrations.wakatime import fetch_today_data, fetch_stats_range
 from pydantic import BaseModel
 from sqlmodel import Session, select
 from app.auth.models import User
