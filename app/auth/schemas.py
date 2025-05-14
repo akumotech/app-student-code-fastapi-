@@ -13,6 +13,8 @@ class User(BaseModel):
     email: EmailStr
     name: str
     disabled: bool | None = None
+    wakatime_access_token_encrypted: Optional[str] = None
+    wakatime_refresh_token_encrypted: Optional[str] = None
 
 class UserInDB(User):
     password: str

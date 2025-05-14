@@ -37,7 +37,7 @@ def wakatime_usage(data: WakaTimeUsageRequest, session: Session = Depends(get_se
         raise HTTPException(status_code=404, detail="User or WakaTime token not found")
 
     try:
-        return fetch_stats_data(user, session)
+        return fetch_stats_range(user, session) ##fetch_stats_data(user, session)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

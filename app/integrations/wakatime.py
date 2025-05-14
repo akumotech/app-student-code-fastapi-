@@ -72,7 +72,7 @@ def fetch_stats_range(user: User, session: Session):
     start_date = end_date - timedelta(days=6)
 
     url = (
-        f"https://wakatime.com/api/v1/users/current/stats"
+        f"https://wakatime.com/api/v1/users/current/summaries"
         f"?start={start_date}&end={end_date}"
     )
 
