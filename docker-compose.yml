@@ -8,12 +8,24 @@ services:
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
-  # backend:
-  #   image: IMAGE_NAME
-  #   command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - DATABASE_URL=postgresql://postgres:dfadsfasdf@db:5432/postgres
-  #   depends_on:
-  #     - db
+
+  backend:
+    image: 896730423324.dkr.ecr.us-east-1.amazonaws.com/student-view-fastapi
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:dfadsfasdf@db:5432/postgres
+    depends_on:
+      - db
+
+  frontend:
+    image: 896730423324.dkr.ecr.us-east-1.amazonaws.com/student-view-nextjs
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+      NODE_ENV: production
+    restart: unless-stopped
+    depends_on:
+      - backend
