@@ -1,30 +1,29 @@
-version: "3.8"
 services:
   db:
     image: postgres:13
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: dfadsfasdf
+      POSTGRES_PASSWORD: redhat1234
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
-
   backend:
-    image: 896730423324.dkr.ecr.us-east-1.amazonaws.com/student-view-fastapi
+    image: fastapi-student-view
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:dfadsfasdf@db:5432/postgres
+      - FRONTEND_DOMAIN=http://frontend:3000
+        DATABASE_URL=postgresql://postgres:dfadsfasdf@db:5432/postgres
     depends_on:
       - db
 
   frontend:
-    image: 896730423324.dkr.ecr.us-east-1.amazonaws.com/student-view-nextjs
+    image: nextjs-student-view
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+      NEXT_PUBLIC_BACKEND_URL: http://backend:8000
       NODE_ENV: production
     restart: unless-stopped
     depends_on:
