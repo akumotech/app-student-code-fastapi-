@@ -10,6 +10,7 @@ class User(SQLModel, table=True):
     password: str
     wakatime_access_token_encrypted: Optional[str] = None
     wakatime_refresh_token_encrypted: Optional[str] = None
+    role: Optional[str] = Field(default="none")  # 'student', 'instructor', 'admin', 'none'
     
     daily_summaries: List["DailySummary"] = Relationship(back_populates="user")
     

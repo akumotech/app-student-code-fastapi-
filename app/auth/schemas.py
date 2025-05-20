@@ -33,6 +33,3 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
     name: str
-    is_student: Optional[bool] = False
-    batch: Optional[str] = None
-    project: Optional[str] = None

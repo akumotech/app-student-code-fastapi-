@@ -9,6 +9,8 @@ from app.config import settings
 from .database import get_session
 from . import crud, models, schemas
 from app.students.models import Student
+from app.auth.models import User
+
 router = APIRouter()
 
 @router.get("/users/me/", response_model=User)
@@ -38,7 +40,8 @@ async def login(data: LoginRequest, db: Session = Depends(get_session)):
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "name": user.name
+                "name": user.name,
+                "role": user.role
             }
         }
     }
@@ -52,14 +55,30 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
             "error": "Signup failed"
         }
     user = crud.create_user(db, email=data.email, name=data.name, password=data.password)
-    if data.is_student and data.batch and data.project:
-        student = Student(user_id=user.id, batch=data.batch, project=data.project)
-        db.add(student)
-        db.commit()
-        db.refresh(student)
+    # Do not create Student here; handle in a separate endpoint
     return {
         "ok": True,
-        "message": "Signup successful"
+        "message": "Signup successful",
+        "user_id": user.id
+    }
+
+# --- New endpoint for student registration ---
+@router.post("/students/register")
+async def register_student(user_id: int, batch: str, project: str, db: Session = Depends(get_session)):
+    # You may want to add authentication/authorization here
+    student = Student(user_id=user_id, batch=batch, project=project)
+    db.add(student)
+    # Update user role
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.role = "student"
+        db.add(user)
+    db.commit()
+    db.refresh(student)
+    return {
+        "ok": True,
+        "message": "Student registered successfully",
+        "student_id": student.id
     }
 
 @router.post("/logout")
