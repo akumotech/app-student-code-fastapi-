@@ -16,8 +16,8 @@ class StudentRead(BaseModel):
 class CertificateBase(BaseModel):
     name: str
     issuer: Optional[str] = None
-    date_issued: Optional[date] = None
-    date_expired: Optional[date] = None
+    date_issued: Optional[date]
+    date_expired: Optional[date]
     description: Optional[str] = None
 
 class CertificateCreate(CertificateBase):
