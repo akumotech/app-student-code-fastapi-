@@ -8,7 +8,7 @@ from .utils import create_access_token, authenticate_user, get_current_active_us
 from app.config import settings
 from .database import get_session
 from . import crud, models, schemas
-from app.students.models import Student
+from app.students.models import Students
 from app.auth.models import User
 
 router = APIRouter()
@@ -55,6 +55,11 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
             "error": "Signup failed"
         }
     user = crud.create_user(db, email=data.email, name=data.name, password=data.password)
+    student = Students(user_id=user.id, batch="april-2025", project="none") 
+    db.add(student)
+    db.commit()
+    db.refresh(student) 
+
     # Do not create Student here; handle in a separate endpoint
     return {
         "ok": True,
@@ -66,7 +71,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
 @router.post("/students/register")
 async def register_student(user_id: int, batch: str, project: str, db: Session = Depends(get_session)):
     # You may want to add authentication/authorization here
-    student = Student(user_id=user_id, batch=batch, project=project)
+    student = Students(user_id=user_id, batch=batch, project=project)
     db.add(student)
     # Update user role
     user = db.query(User).filter(User.id == user_id).first()

@@ -10,6 +10,7 @@ from app.config import settings #SECRET_KEY, ALGORITHM
 from .crud import get_user_by_email
 from .security import pwd_context
 from .database import get_session
+from app.students.models import BatchInstructorLink, BatchStudentLink
 
 oauth_2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/")
 
