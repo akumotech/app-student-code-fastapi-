@@ -56,6 +56,16 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
         }
     user = crud.create_user(db, email=data.email, name=data.name, password=data.password)
     # Do not create Student here; handle in a separate endpoint
+    ## TEMP CREATING STUDENTS HERE (SHOULD NOT BE HERE!!)
+    if user:
+        student = Student(user_id=user.id, batch="april-2025", project="none")
+        # Update user role
+        user.role = "student"
+        db.add(student)
+        db.add(user)
+        db.commit()
+        db.refresh(student)
+
     return {
         "ok": True,
         "message": "Signup successful",
