@@ -1,159 +1,589 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import Response
+from sqlmodel import Session
 from typing import List
-from app.students.models import Students, Certificates, Demos, Batches, Projects
-from app.students.schemas import (
-    StudentCreate, StudentRead,
-    CertificateCreate, CertificateUpdate, CertificateRead,
-    DemoCreate, DemoUpdate, DemoRead,
-    BatchCreate, BatchRead, ProjectCreate, ProjectRead
+
+from . import crud
+from .models import (
+    Student,
+)  # Only Student needed directly for type hints if any, crud handles others
+from .schemas import (
+    StudentCreate,
+    StudentRead,
+    StudentUpdate,  # Added StudentUpdate
+    CertificateCreate,
+    CertificateUpdate,
+    CertificateRead,
+    DemoCreate,
+    DemoUpdate,
+    DemoRead,
+    BatchCreate,
+    BatchRead,
+    BatchUpdate,  # Added BatchUpdate
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,  # Added ProjectUpdate
 )
-from app.auth.database import engine
-from app.students import crud
+
+from app.auth.database import get_session
+from app.auth.utils import get_current_active_user
+from app.auth.schemas import User as UserSchema  # For current_user type hint
+from app.auth.auth import APIResponse  # Import the standardized APIResponse
 
 router = APIRouter()
 
-def get_session():
-    with Session(engine) as session:
-        yield session
+
+# --- Authorization Helper Functions (Generalized) ---
+def get_authorized_student_for_action(
+    student_id: int,
+    current_user: UserSchema,
+    session: Session,
+    allow_owner: bool = True,
+):
+    """Checks if current_user can act on behalf of student_id."""
+    db_student = crud.get_student(session, student_id)
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student {student_id} not found",
+        )
+
+    is_owner = current_user.id == db_student.user_id
+    is_admin_or_instructor = current_user.role in ["admin", "instructor"]
+
+    if is_admin_or_instructor:
+        return db_student
+    if allow_owner and is_owner:
+        return db_student
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Not authorized for this student-related action",
+    )
+
+
+def require_roles(current_user: UserSchema, allowed_roles: List[str]):
+    """Ensures current_user has one of the allowed_roles."""
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Action requires one of roles: {allowed_roles}",
+        )
+
 
 # --- Batch Endpoints ---
-@router.post("/batches/", response_model=BatchRead)
-def create_batch(batch: BatchCreate, session: Session = Depends(get_session)):
-    return crud.create_batch(session, batch.dict())
-
-@router.get("/batches/", response_model=List[BatchRead])
-def list_batches(session: Session = Depends(get_session)):
-    return crud.list_batches(session)
-
-@router.get("/batches/{batch_id}", response_model=BatchRead)
-def get_batch(batch_id: int, session: Session = Depends(get_session)):
-    batch = crud.get_batch(session, batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+@router.post(
+    "/batches/", response_model=BatchRead, summary="Create Batch", tags=["Batches"]
+)
+def create_batch_endpoint(
+    batch_data: BatchCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    batch = crud.create_batch(session, batch_create=batch_data)
+    session.commit()
+    session.refresh(batch)
     return batch
 
-@router.put("/batches/{batch_id}", response_model=BatchRead)
-def update_batch(batch_id: int, batch: BatchCreate, session: Session = Depends(get_session)):
-    db_batch = crud.get_batch(session, batch_id)
-    if not db_batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    return crud.update_batch(session, db_batch, batch.dict(exclude_unset=True))
 
-@router.delete("/batches/{batch_id}")
-def delete_batch(batch_id: int, session: Session = Depends(get_session)):
+@router.get(
+    "/batches/",
+    response_model=List[BatchRead],
+    summary="List Batches",
+    tags=["Batches"],
+)
+def list_batches_endpoint(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    # All authenticated users can list batches
+    return crud.list_batches(session)
+
+
+@router.get(
+    "/batches/{batch_id}",
+    response_model=BatchRead,
+    summary="Get Batch by ID",
+    tags=["Batches"],
+)
+def get_batch_endpoint(
+    batch_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
     db_batch = crud.get_batch(session, batch_id)
     if not db_batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    crud.delete_batch(session, db_batch)
-    return {"ok": True}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found"
+        )
+    return db_batch
+
+
+@router.put(
+    "/batches/{batch_id}",
+    response_model=BatchRead,
+    summary="Update Batch",
+    tags=["Batches"],
+)
+def update_batch_endpoint(
+    batch_id: int,
+    batch_data: BatchUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    db_batch = crud.get_batch(session, batch_id)
+    if not db_batch:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found"
+        )
+    updated_batch = crud.update_batch(
+        session, db_batch=db_batch, batch_update=batch_data
+    )
+    session.commit()
+    session.refresh(updated_batch)
+    return updated_batch
+
+
+@router.delete(
+    "/batches/{batch_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Batch",
+    tags=["Batches"],
+)
+def delete_batch_endpoint(
+    batch_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    db_batch = crud.get_batch(session, batch_id)
+    if not db_batch:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found"
+        )
+    crud.delete_batch(session, db_batch=db_batch)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 # --- Project Endpoints ---
-@router.post("/projects/", response_model=ProjectRead)
-def create_project(project: ProjectCreate, session: Session = Depends(get_session)):
-    return crud.create_project(session, project.dict())
-
-@router.get("/projects/", response_model=List[ProjectRead])
-def list_projects(session: Session = Depends(get_session)):
-    return crud.list_projects(session)
-
-@router.get("/projects/{project_id}", response_model=ProjectRead)
-def get_project(project_id: int, session: Session = Depends(get_session)):
-    project = crud.get_project(session, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+@router.post(
+    "/projects/",
+    response_model=ProjectRead,
+    summary="Create Project",
+    tags=["Projects"],
+)
+def create_project_endpoint(
+    project_data: ProjectCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    project = crud.create_project(session, project_create=project_data)
+    session.commit()
+    session.refresh(project)
     return project
 
-@router.put("/projects/{project_id}", response_model=ProjectRead)
-def update_project(project_id: int, project: ProjectCreate, session: Session = Depends(get_session)):
+
+@router.get(
+    "/projects/",
+    response_model=List[ProjectRead],
+    summary="List Projects",
+    tags=["Projects"],
+)
+def list_projects_endpoint(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    return crud.list_projects(session)
+
+
+@router.get(
+    "/projects/{project_id}",
+    response_model=ProjectRead,
+    summary="Get Project by ID",
+    tags=["Projects"],
+)
+def get_project_endpoint(
+    project_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
     db_project = crud.get_project(session, project_id)
     if not db_project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return crud.update_project(session, db_project, project.dict(exclude_unset=True))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    return db_project
 
-@router.delete("/projects/{project_id}")
-def delete_project(project_id: int, session: Session = Depends(get_session)):
+
+@router.put(
+    "/projects/{project_id}",
+    response_model=ProjectRead,
+    summary="Update Project",
+    tags=["Projects"],
+)
+def update_project_endpoint(
+    project_id: int,
+    project_data: ProjectUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
     db_project = crud.get_project(session, project_id)
     if not db_project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    crud.delete_project(session, db_project)
-    return {"ok": True}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    updated_project = crud.update_project(
+        session, db_project=db_project, project_update=project_data
+    )
+    session.commit()
+    session.refresh(updated_project)
+    return updated_project
 
-# --- Student Endpoints ---
-@router.post("/students/", response_model=StudentRead)
-def create_student(student: StudentCreate, session: Session = Depends(get_session)):
-    return crud.create_student(session, student.dict())
 
-@router.get("/students/", response_model=List[StudentRead])
-def list_students(session: Session = Depends(get_session)):
+@router.delete(
+    "/projects/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Project",
+    tags=["Projects"],
+)
+def delete_project_endpoint(
+    project_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    db_project = crud.get_project(session, project_id)
+    if not db_project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    crud.delete_project(session, db_project=db_project)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Student Profile Endpoints (distinct from auth-related student registration) ---
+# These allow managing student profiles if needed, separate from auth /students/register
+@router.get(
+    "/students/",
+    response_model=List[StudentRead],
+    summary="List Students",
+    tags=["Students"],
+)
+def list_students_endpoint(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
     return crud.list_students(session)
 
-@router.get("/students/{student_id}", response_model=StudentRead)
-def get_student(student_id: int, session: Session = Depends(get_session)):
-    student = crud.get_student(session, student_id)
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    return student
 
-@router.put("/students/{student_id}", response_model=StudentRead)
-def update_student(student_id: int, student: StudentCreate, session: Session = Depends(get_session)):
+@router.get(
+    "/students/{student_id}",
+    response_model=StudentRead,
+    summary="Get Student by ID",
+    tags=["Students"],
+)
+def get_student_endpoint(
+    student_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    # Admins/instructors can get any student. Student can get their own profile.
     db_student = crud.get_student(session, student_id)
     if not db_student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    return crud.update_student(session, db_student, student.dict(exclude_unset=True))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student {student_id} not found",
+        )
 
-@router.delete("/students/{student_id}")
-def delete_student(student_id: int, session: Session = Depends(get_session)):
-    db_student = crud.get_student(session, student_id)
+    if (
+        current_user.role not in ["admin", "instructor"]
+        and current_user.id != db_student.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this student profile",
+        )
+    return db_student
+
+
+@router.put(
+    "/students/{student_id}",
+    response_model=StudentRead,
+    summary="Update Student Profile",
+    tags=["Students"],
+)
+def update_student_endpoint(
+    student_id: int,
+    student_data: StudentUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    # Admins/instructors can update any student. Student can update their own profile.
+    db_student = get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    updated_student = crud.update_student(
+        session, db_student=db_student, student_update=student_data
+    )
+    session.commit()
+    session.refresh(updated_student)
+    return updated_student
+
+
+# Note: Student creation is via /auth/students/register. Deletion might be complex (cascade, archiving).
+# @router.delete("/students/{student_id}", ...)
+
+# --- "Me" Endpoints for Logged-in Student ---
+
+
+@router.get(
+    "/students/me/certificates",
+    response_model=List[CertificateRead],
+    summary="List My Certificates",
+    tags=["My Student Data"],
+)
+def list_my_certificates(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    if current_user.role != "student" or current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="User is not a student"
+        )
+
+    db_student = (
+        session.query(Student).filter(Student.user_id == current_user.id).first()
+    )
     if not db_student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    crud.delete_student(session, db_student)
-    return {"ok": True}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found for current user.",
+        )
 
-# --- Certificate Endpoints ---
-@router.get("/students/{student_id}/certificates", response_model=List[CertificateRead])
-def list_certificates(student_id: int, session: Session = Depends(get_session)):
-    return crud.get_certificates_by_student(session, student_id)
+    return crud.get_certificates_by_student(session, student_id=db_student.id)
 
-@router.post("/students/{student_id}/certificates", response_model=CertificateRead)
-def create_certificate(student_id: int, cert: CertificateCreate, session: Session = Depends(get_session)):
-    return crud.create_certificate(session, student_id, cert.dict())
 
-@router.put("/students/{student_id}/certificates/{certificate_id}", response_model=CertificateRead)
-def update_certificate(student_id: int, certificate_id: int, cert: CertificateUpdate, session: Session = Depends(get_session)):
-    db_cert = crud.get_certificate(session, certificate_id)
+@router.get(
+    "/students/me/demos",
+    response_model=List[DemoRead],
+    summary="List My Demos",
+    tags=["My Student Data"],
+)
+def list_my_demos(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    if current_user.role != "student" or current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="User is not a student"
+        )
+
+    db_student = (
+        session.query(Student).filter(Student.user_id == current_user.id).first()
+    )
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found for current user.",
+        )
+
+    return crud.get_demos_by_student(session, student_id=db_student.id)
+
+
+# --- Certificate Endpoints (Scoped to a Student) ---
+@router.get(
+    "/students/{student_id}/certificates",
+    response_model=List[CertificateRead],
+    summary="List Student Certificates",
+    tags=["Student Specific"],
+)
+def list_student_certificates(
+    student_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )  # Read access for owner or admin/instructor
+    return crud.get_certificates_by_student(session, student_id=student_id)
+
+
+@router.post(
+    "/students/{student_id}/certificates",
+    response_model=CertificateRead,
+    summary="Create Student Certificate",
+    tags=["Student Specific"],
+)
+def create_student_certificate(
+    student_id: int,
+    cert_schema: CertificateCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )  # Write access for owner or admin/instructor
+    certificate = crud.create_certificate(
+        session, student_id=student_id, cert_create=cert_schema
+    )
+    session.commit()
+    session.refresh(certificate)
+    return certificate
+
+
+@router.put(
+    "/students/{student_id}/certificates/{certificate_id}",
+    response_model=CertificateRead,
+    summary="Update Student Certificate",
+    tags=["Student Specific"],
+)
+def update_student_certificate(
+    student_id: int,
+    certificate_id: int,
+    cert_schema: CertificateUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    db_cert = crud.get_certificate(session, certificate_id=certificate_id)
+    if (
+        not db_cert or db_cert.student_id != student_id
+    ):  # Ensure certificate belongs to the student path
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found or does not belong to this student",
+        )
+    updated_cert = crud.update_certificate(
+        session, db_cert=db_cert, cert_update=cert_schema
+    )
+    session.commit()
+    session.refresh(updated_cert)
+    return updated_cert
+
+
+@router.delete(
+    "/students/{student_id}/certificates/{certificate_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Student Certificate",
+    tags=["Student Specific"],
+)
+def delete_student_certificate(
+    student_id: int,
+    certificate_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    db_cert = crud.get_certificate(session, certificate_id=certificate_id)
     if not db_cert or db_cert.student_id != student_id:
-        raise HTTPException(status_code=404, detail="Certificate not found")
-    return crud.update_certificate(session, db_cert, cert.dict(exclude_unset=True))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found or does not belong to this student",
+        )
+    crud.delete_certificate(session, db_cert=db_cert)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@router.delete("/students/{student_id}/certificates/{certificate_id}")
-def delete_certificate(student_id: int, certificate_id: int, session: Session = Depends(get_session)):
-    db_cert = crud.get_certificate(session, certificate_id)
-    if not db_cert or db_cert.student_id != student_id:
-        raise HTTPException(status_code=404, detail="Certificate not found")
-    crud.delete_certificate(session, db_cert)
-    return {"ok": True}
 
-# --- Demo Endpoints ---
-@router.get("/students/{student_id}/demos", response_model=List[DemoRead])
-def list_demos(student_id: int, session: Session = Depends(get_session)):
-    return crud.get_demos_by_student(session, student_id)
+# --- Demo Endpoints (Scoped to a Student) ---
+@router.get(
+    "/students/{student_id}/demos",
+    response_model=List[DemoRead],
+    summary="List Student Demos",
+    tags=["Student Specific"],
+)
+def list_student_demos(
+    student_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    return crud.get_demos_by_student(session, student_id=student_id)
 
-@router.post("/students/{student_id}/demos", response_model=DemoRead)
-def create_demo(student_id: int, demo: DemoCreate, session: Session = Depends(get_session)):
-    return crud.create_demo(session, student_id, demo.dict())
 
-@router.put("/students/{student_id}/demos/{demo_id}", response_model=DemoRead)
-def update_demo(student_id: int, demo_id: int, demo: DemoUpdate, session: Session = Depends(get_session)):
-    db_demo = crud.get_demo(session, demo_id)
+@router.post(
+    "/students/{student_id}/demos",
+    response_model=DemoRead,
+    summary="Create Student Demo",
+    tags=["Student Specific"],
+)
+def create_student_demo(
+    student_id: int,
+    demo_schema: DemoCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    demo = crud.create_demo(session, student_id=student_id, demo_create=demo_schema)
+    session.commit()
+    session.refresh(demo)
+    return demo
+
+
+@router.put(
+    "/students/{student_id}/demos/{demo_id}",
+    response_model=DemoRead,
+    summary="Update Student Demo",
+    tags=["Student Specific"],
+)
+def update_student_demo(
+    student_id: int,
+    demo_id: int,
+    demo_schema: DemoUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    db_demo = crud.get_demo(session, demo_id=demo_id)
     if not db_demo or db_demo.student_id != student_id:
-        raise HTTPException(status_code=404, detail="Demo not found")
-    return crud.update_demo(session, db_demo, demo.dict(exclude_unset=True))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo not found or does not belong to this student",
+        )
+    updated_demo = crud.update_demo(session, db_demo=db_demo, demo_update=demo_schema)
+    session.commit()
+    session.refresh(updated_demo)
+    return updated_demo
 
-@router.delete("/students/{student_id}/demos/{demo_id}")
-def delete_demo(student_id: int, demo_id: int, session: Session = Depends(get_session)):
-    db_demo = crud.get_demo(session, demo_id)
+
+@router.delete(
+    "/students/{student_id}/demos/{demo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Student Demo",
+    tags=["Student Specific"],
+)
+def delete_student_demo(
+    student_id: int,
+    demo_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    get_authorized_student_for_action(
+        student_id, current_user, session, allow_owner=True
+    )
+    db_demo = crud.get_demo(session, demo_id=demo_id)
     if not db_demo or db_demo.student_id != student_id:
-        raise HTTPException(status_code=404, detail="Demo not found")
-    crud.delete_demo(session, db_demo)
-    return {"ok": True} 
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo not found or does not belong to this student",
+        )
+    crud.delete_demo(session, db_demo=db_demo)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
