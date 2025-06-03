@@ -160,6 +160,10 @@ async def wakatime_callback(
             )
 
         token_data = response.json()
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")  # WakaTime might provide this
+        # expires_in = token_data.get("expires_in") # And expiry
+        # granted_scopes = token_data.get("scope")
     except httpx.RequestError as exc:
         # Log exc for debugging server-side
         print(f"Request to WakaTime /oauth/token failed: {exc}")
@@ -175,11 +179,6 @@ async def wakatime_callback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during WakaTime token exchange.",
         )
-
-        access_token = token_data.get("access_token")
-    refresh_token = token_data.get("refresh_token")  # WakaTime might provide this
-    # expires_in = token_data.get("expires_in") # And expiry
-    # granted_scopes = token_data.get("scope")
 
     if not access_token:
         # Log token_data for debugging
