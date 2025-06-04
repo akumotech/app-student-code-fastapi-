@@ -1,17 +1,27 @@
 FROM python:3.11-slim
 
-# Set working directory
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy files
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./app ./app
+
+COPY alembic.ini .
+COPY ./alembic ./alembic
+
+COPY ./scripts ./scripts
+RUN chmod +x ./scripts/*.sh
+
 COPY ./.env ./.env
 
-# Expose port
+COPY ./docker-entrypoint.sh .
+RUN chmod +x ./docker-entrypoint.sh
+
 EXPOSE 8000
 
-# Run app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./docker-entrypoint.sh"]

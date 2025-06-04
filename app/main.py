@@ -6,7 +6,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.openapi.utils import get_openapi
 
 ## local imports
-from app.auth.database import create_db_and_tables
 from app.integrations.routes import router as integrations_router
 from app.students.routes import router as students_router
 from app.admin.routes import router as admin_router
@@ -37,7 +36,6 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    create_db_and_tables()
     start_scheduler()
 
 

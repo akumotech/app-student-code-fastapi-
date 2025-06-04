@@ -1,0 +1,19 @@
+# Alternative: Connect to database running on host machine
+services:
+  migration:
+    image: fastapi-student-view-migration
+    build: .
+    environment:
+      # Option A: Use host.docker.internal (works on Docker Desktop)
+      - DATABASE_URL=postgresql://postgres:dfadsfasdf@host.docker.internal:5432/postgres
+
+      # Option B: Use your actual host IP (replace with your IP)
+      # - DATABASE_URL=postgresql://postgres:dfadsfasdf@192.168.1.100:5432/postgres
+
+      # Option C: Use Docker host network mode
+      # network_mode: host
+      # - DATABASE_URL=postgresql://postgres:dfadsfasdf@localhost:5432/postgres
+    command: ["./docker-entrypoint.sh", "--migrate-only"]
+
+    # For Option C (host networking), uncomment this:
+    # network_mode: host
