@@ -8,6 +8,12 @@ from app.auth import (
 )  # Alias to avoid potential name clashes if not used
 from app.students import models as student_models_module  # Alias
 
+# Import integrations models to ensure they are registered
+from app.integrations import model as integration_models_module
+
+# Import admin models
+from app.admin import models as admin_models_module
+
 # If you have an integrations module with its own SQLModels, import it too:
 # from app.integrations import models as integration_models_module
 
@@ -16,6 +22,8 @@ from app.students import models as student_models_module  # Alias
 # The aliased imports above ensure the modules are loaded.
 
 print("Attempting to create database tables...")
+print(f"Registered tables: {list(SQLModel.metadata.tables.keys())}")
+
 # This will create tables for all models imported directly or indirectly
 # and registered with SQLModel.metadata by the time this line is executed.
 SQLModel.metadata.create_all(engine)
