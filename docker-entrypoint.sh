@@ -63,7 +63,7 @@ wait_for_database() {
     attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if [ -z "$DATABASE_URL" ]; then
+        if pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; then
             echo -e "${GREEN}✅ Database is ready!${NC}"
             return 0
         fi
