@@ -24,7 +24,7 @@ load_env_file() {
 validate_env_vars() {
     echo -e "${BLUE}🔍 Validating required environment variables...${NC}"
     
-    required_vars=("SECRET_KEY" "DATABASE_URL" "WAKATIME_CLIENT_ID" "WAKATIME_CLIENT_SECRET" "FRONTEND_DOMAIN" "FERNET_KEY" "REDIRECT_URI")
+    required_vars=("SECRET_KEY" "WAKATIME_CLIENT_ID" "WAKATIME_CLIENT_SECRET" "FRONTEND_DOMAIN" "FERNET_KEY" "REDIRECT_URI")
     missing_vars=()
     
     for var in "${required_vars[@]}"; do
@@ -53,7 +53,7 @@ validate_env_vars
 
 wait_for_database() {
     echo -e "${YELLOW}⏳ Waiting for database to be ready...${NC}"
-    
+
     if [ -z "$DATABASE_URL" ]; then
         echo -e "${RED}❌ DATABASE_URL environment variable is not set${NC}"
         exit 1
@@ -63,7 +63,7 @@ wait_for_database() {
     attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; then
+        if [ -z "$DATABASE_URL" ]; then
             echo -e "${GREEN}✅ Database is ready!${NC}"
             return 0
         fi
