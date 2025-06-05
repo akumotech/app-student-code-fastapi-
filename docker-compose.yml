@@ -21,8 +21,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_BACKEND_URL: backend:8000
-      - NODE_ENV: production
+      - NEXT_PUBLIC_BACKEND_URL=https://code.dev.akumotechnology.com/api
+      - NODE_ENV=production
     restart: unless-stopped
     depends_on:
       - backend
