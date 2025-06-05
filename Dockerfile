@@ -14,14 +14,10 @@ COPY ./app ./app
 COPY alembic.ini .
 COPY ./alembic ./alembic
 
-COPY ./scripts ./scripts
-RUN chmod +x ./scripts/*.sh
-
 COPY ./.env ./.env
 
 COPY ./docker-entrypoint.sh .
 RUN chmod +x ./docker-entrypoint.sh
 
 EXPOSE 8000
-
 CMD ["./docker-entrypoint.sh"]

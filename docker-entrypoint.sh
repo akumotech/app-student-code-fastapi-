@@ -8,7 +8,48 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Load environment variables from .env file
+load_env_file() {
+    if [ -f ".env" ]; then
+        echo -e "${BLUE}📄 Loading environment variables from .env file...${NC}"
+        # Export all variables from .env file, ignoring comments and empty lines
+        export $(grep -v '^#' .env | grep -v '^$' | xargs)
+        echo -e "${GREEN}✅ Environment variables loaded successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠️  No .env file found. Using system environment variables...${NC}"
+    fi
+}
+
+# Validate required environment variables
+validate_env_vars() {
+    echo -e "${BLUE}🔍 Validating required environment variables...${NC}"
+    
+    required_vars=("SECRET_KEY" "DATABASE_URL" "WAKATIME_CLIENT_ID" "WAKATIME_CLIENT_SECRET" "FRONTEND_DOMAIN" "FERNET_KEY" "REDIRECT_URI")
+    missing_vars=()
+    
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            missing_vars+=("$var")
+        fi
+    done
+    
+    if [ ${#missing_vars[@]} -gt 0 ]; then
+        echo -e "${RED}❌ Missing required environment variables:${NC}"
+        for var in "${missing_vars[@]}"; do
+            echo -e "${RED}   - $var${NC}"
+        done
+        echo -e "${RED}Please check your .env file or environment configuration.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ All required environment variables are set${NC}"
+}
+
 echo -e "${BLUE}Starting FastAPI application with Alembic migrations...${NC}"
+
+# Load environment variables first
+load_env_file
+validate_env_vars
 
 wait_for_database() {
     echo -e "${YELLOW}⏳ Waiting for database to be ready...${NC}"
