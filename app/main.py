@@ -15,11 +15,11 @@ from app.config import settings
 
 # Make EXCLUDE_PATHS a global or accessible constant for custom_openapi
 EXCLUDE_PATHS_FOR_OPENAPI = [
-    "/signup",
-    "/login",
+    "/api/signup",
+    "/api/login",
     "/docs",
     "/openapi.json",
-    "/signup/student",
+    "/api/signup/student",
 ]
 # You might need to add other public paths if any, e.g. from integrations router if they are public
 # Also, consider if the root path "/" or "/health" should be excluded.
@@ -39,9 +39,9 @@ def on_startup():
     start_scheduler()
 
 
-app.include_router(auth_router)
-app.include_router(integrations_router)
-app.include_router(students_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(integrations_router, prefix="/api")
+app.include_router(students_router, prefix="/api")
 app.include_router(admin_router, prefix="/api/v1/admin")
 
 # Redefine EXCLUDE_PATHS for the middleware using the same source if possible,
