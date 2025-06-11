@@ -18,7 +18,7 @@ env/
 .idea/
 
 # FastAPI migration cache files
-alembic/__pycache__/
+**/__pycache__/
 
 # Dependency directories
 pip-wheel-metadata/
