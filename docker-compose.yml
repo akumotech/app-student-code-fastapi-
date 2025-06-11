@@ -31,40 +31,6 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-"docker-compose.yml" 44L, 977B                                                                                                                                                                                                                             1,1           Top
-services:
-  backend:
-    image: fastapi-student-code
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - FRONTEND_DOMAIN=http://frontend:3000
-      - DATABASE_URL=postgresql://postgres:redhat1234@10.3.5.245:5432/postgres
-    restart: unless-stopped
-    networks:
-      app_net:
-        ipv4_address: 172.21.0.100
-
-  migration:
-    image: fastapi-student-view-migration
-    build: .
-    command: ["./docker-entrypoint.sh", "--migrate-only"]
-    environment:
-      - DATABASE_URL=postgresql://postgres:redhat1234@10.3.5.245:5432/postgres
-    networks:
-      - app_net
-
-  frontend:
-    image: nextjs-student-view
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
-      - NODE_ENV=production
-    restart: unless-stopped
-    depends_on:
-      - backend
     networks:
       app_net:
         ipv4_address: 172.21.0.101
