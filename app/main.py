@@ -5,12 +5,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.openapi.utils import get_openapi
 
-## local imports 
-from app.auth.database import create_db_and_tables
+## local imports
 from app.integrations.routes import router as integrations_router
 from app.students.routes import router as students_router
+from app.admin.routes import router as admin_router
 from app.auth.utils import verify_access_token
+from app.integrations.scheduler import start_scheduler
+from app.config import settings
 
+# Make EXCLUDE_PATHS a global or accessible constant for custom_openapi
+EXCLUDE_PATHS_FOR_OPENAPI = [
+    "/api/signup",
+    "/api/login",
+    "/docs",
+    "/openapi.json",
+    "/api/signup/student",
+]
+# You might need to add other public paths if any, e.g. from integrations router if they are public
+# Also, consider if the root path "/" or "/health" should be excluded.
 
 app = FastAPI()
 app.add_middleware(
@@ -21,42 +33,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 def on_startup():
-    create_db_and_tables()
+    start_scheduler()
 
 
-app.include_router(auth_router)
-app.include_router(integrations_router)
-app.include_router(students_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(integrations_router, prefix="/api")
+app.include_router(students_router, prefix="/api")
+app.include_router(admin_router, prefix="/api/v1/admin")
 
+# Redefine EXCLUDE_PATHS for the middleware using the same source if possible,
+# or ensure they are consistent.
+EXCLUDE_PATHS_FOR_MIDDLEWARE = EXCLUDE_PATHS_FOR_OPENAPI  # Using the same list
 
-EXCLUDE_PATHS = ["/signup", "/login", "/docs", "/openapi.json"]  # Add more if needed
 
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
-        if path in EXCLUDE_PATHS:
+        # Use the specific list for middleware
+        if path in EXCLUDE_PATHS_FOR_MIDDLEWARE:
             return await call_next(request)
 
         if request.method == "OPTIONS":
             return await call_next(request)
 
         try:
-            # Call the verify_access_token function to validate the token
             verify_access_token(request)
-            # If token validation succeeds, continue to the next middleware or route handler
             response = await call_next(request)
             return response
         except HTTPException as exc:
-            # If token validation fails due to HTTPException, return the error response
-            return JSONResponse(content={"detail": exc.detail}, status_code=exc.status_code)
+            return JSONResponse(
+                content={"detail": exc.detail}, status_code=exc.status_code
+            )
         except Exception as exc:
-            # If token validation fails due to other exceptions, return a generic error response
-            return JSONResponse(content={"detail": f"Error: {str(exc)}"}, status_code=500)
+            # Log str(e) and traceback server-side
+            print(f"Unhandled exception in CustomMiddleware: {exc}")
+            return JSONResponse(
+                content={"detail": "Internal server error"}, status_code=500
+            )
 
-# Add the custom middleware to the FastAPI app
+
 app.add_middleware(CustomMiddleware)
+
 
 def custom_openapi():
     if app.openapi_schema:
@@ -64,20 +84,30 @@ def custom_openapi():
     openapi_schema = get_openapi(
         title="My API",
         version="1.0.0",
-        description="API with JWT auth",
+        description="API with HTTP-Only Cookie Authentication",
         routes=app.routes,
     )
+    # Define cookie-based security scheme
     openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
+        "CookieAuth": {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": settings.ACCESS_TOKEN_COOKIE_NAME,
         }
     }
-    for path in openapi_schema["paths"].values():
-        for method in path.values():
-            method["security"] = [{"BearerAuth": []}]
+    # Apply security selectively
+    for path_key, path_item in openapi_schema["paths"].items():
+        if path_key not in EXCLUDE_PATHS_FOR_OPENAPI:
+            for method in path_item.values():
+                if isinstance(method, dict):
+                    method["security"] = [{"CookieAuth": []}]
+        else:
+            for method in path_item.values():
+                if isinstance(method, dict) and "security" in method:
+                    method["security"] = []
+
     app.openapi_schema = openapi_schema
     return openapi_schema
+
 
 app.openapi = custom_openapi

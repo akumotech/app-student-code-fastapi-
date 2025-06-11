@@ -17,8 +17,8 @@ env/
 .vscode/
 .idea/
 
-# FastAPI migration folder
-alembic/
+# FastAPI migration cache files
+alembic/__pycache__/
 
 # Dependency directories
 pip-wheel-metadata/
