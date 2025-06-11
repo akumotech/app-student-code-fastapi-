@@ -18,7 +18,7 @@ config = context.config
 # Set the database URL from environment
 config.set_main_option(
     "sqlalchemy.url",
-    os.getenv("DATABASE_URL", "postgresql://postgres:dfadsfasdf@localhost:5432/postgres")
+    os.getenv("DATABASE_URL", "postgresql://postgres:redhat1234@db:5432/postgres")
 )
 
 # Interpret the config file for Python logging

@@ -83,24 +83,68 @@ run_migrations() {
 
     echo -e "${BLUE}🗄️ Running database migrations...${NC}"
     
-    if ! alembic current >/dev/null 2>&1; then
-        echo -e "${YELLOW}📋 No migration history found. Checking if database has tables...${NC}"
+    # Check if alembic version table exists to determine migration strategy
+    alembic_table_exists=$(psql "$DATABASE_URL" -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'alembic_version');" 2>/dev/null | xargs || echo "f")
+    
+    if [ "$alembic_table_exists" = "f" ]; then
+        echo -e "${YELLOW}📋 No migration history found. Checking database state...${NC}"
         
-        table_count=$(psql "$DATABASE_URL" -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | xargs || echo "0")
+        # Check if core tables exist (user table is our foundation)
+        user_table_exists=$(psql "$DATABASE_URL" -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user');" 2>/dev/null | xargs || echo "f")
         
-        if [ "$table_count" -gt 0 ]; then
-            echo -e "${YELLOW}🏷️  Existing tables found. Marking current state as migrated...${NC}"
+        if [ "$user_table_exists" = "t" ]; then
+            echo -e "${YELLOW}🏗️  Existing database detected. Using safe migration approach...${NC}"
+            
+            # For existing databases, only create missing tables safely
+            python -c "
+import os
+from sqlmodel import SQLModel, create_engine, text
+from app.auth.models import *
+from app.students.models import *
+from app.integrations.model import *
+from app.admin.models import *
+
+try:
+    engine = create_engine(os.getenv('DATABASE_URL'))
+    
+    # Get existing tables
+    with engine.connect() as conn:
+        result = conn.execute(text('SELECT table_name FROM information_schema.tables WHERE table_schema = \"public\"'))
+        existing_tables = {row[0] for row in result}
+    
+    # Get required tables
+    required_tables = set(SQLModel.metadata.tables.keys())
+    missing_tables = required_tables - existing_tables
+    
+    if missing_tables:
+        print(f'📝 Creating missing tables: {missing_tables}')
+        # Create only missing tables with checkfirst=True for safety
+        for table_name in missing_tables:
+            table = SQLModel.metadata.tables[table_name]
+            table.create(engine, checkfirst=True)
+        print('✅ Missing tables created successfully')
+    else:
+        print('✅ All required tables already exist')
+        
+except Exception as e:
+    print(f'❌ Error: {e}')
+    exit(1)
+"
+            
+            # Mark the current schema as migrated to avoid re-running migrations
+            echo -e "${YELLOW}🏷️  Marking current state as migrated...${NC}"
             alembic stamp head
+            
         else
-            echo -e "${BLUE}🆕 Fresh database detected. Running initial migration...${NC}"
+            echo -e "${BLUE}🆕 Fresh database detected. Running full migration...${NC}"
             alembic upgrade head
         fi
     else
-        echo -e "${BLUE}🔄 Applying pending migrations...${NC}"
+        echo -e "${BLUE}🔄 Database has migration history. Applying pending migrations...${NC}"
         alembic upgrade head
     fi
     
-    echo -e "${GREEN}✅ Database migrations completed!${NC}"
+    echo -e "${GREEN}✅ Database migrations completed safely!${NC}"
 }
 
 start_application() {
