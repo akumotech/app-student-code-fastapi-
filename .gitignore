@@ -77,8 +77,9 @@ cython_debug/
 # Local Django settings
 local_settings.py
 
-# FastAPI migration folder
-alembic/
+# Alembic cache files (but keep the alembic directory and migration files)
+alembic/__pycache__/
+alembic/versions/__pycache__/
 
 # PostgreSQL and SQLAlchemy
 *.db
