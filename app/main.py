@@ -27,9 +27,14 @@ EXCLUDE_PATHS_FOR_OPENAPI = [
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://code.akumotechnology.com", # Production
+        "https://code.dev.akumotechnology.com",
+        "http://localhost:3000",  # For local development
+        "http://127.0.0.1:3000",  # Alternative localhost
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

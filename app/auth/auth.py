@@ -28,7 +28,7 @@ from app.core.schemas import APIResponse
 router = APIRouter()
 
 
-@router.get("/users/me/", response_model=UserSchema)
+@router.get("/users/me", response_model=UserSchema)
 async def read_users_me(current_user: UserSchema = Depends(get_current_active_user)):
     return current_user
 

@@ -111,6 +111,21 @@ async def wakatime_callback(
     code = payload.code
     state_from_wakatime = payload.state
 
+    # Debug logging
+    print(f"WakaTime callback received for user {current_user.email}")
+    print(f"Code length: {len(code) if code else 'None'}")
+    print(f"State: {state_from_wakatime}")
+    print(f"Redirect URI being used: {settings.REDIRECT_URI}")
+
+    # Check if user already has a WakaTime token (prevent duplicate processing)
+    if current_user.wakatime_access_token_encrypted:
+        print(f"User {current_user.email} already has WakaTime token, callback may be duplicate")
+        return APIResponse(
+            success=True,
+            message="WakaTime account already linked.",
+            data={"status": "already_linked"},
+        )
+
     if not code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,6 +154,12 @@ async def wakatime_callback(
         "grant_type": "authorization_code",
         "code": code,
     }
+    
+    # Debug logging for token exchange
+    print(f"Token exchange data: {dict(token_exchange_data)}")
+    print(f"Client ID: {settings.WAKATIME_CLIENT_ID[:10]}...")  # Only first 10 chars for security
+    print(f"Redirect URI: {settings.REDIRECT_URI}")
+    
     response_text_debug = "N/A"  # For debugging in case of early exit
     try:
         async with httpx.AsyncClient() as client:
