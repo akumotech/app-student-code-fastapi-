@@ -353,7 +353,7 @@ def list_my_certificates(
     session: Session = Depends(get_session),
     current_user: UserSchema = Depends(get_current_active_user),
 ):
-    if current_user.role != "student" or current_user.role != "admin":
+    if current_user.role != "student" and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="User is not a student"
         )
@@ -361,6 +361,7 @@ def list_my_certificates(
     db_student = (
         session.query(Student).filter(Student.user_id == current_user.id).first()
     )
+
     if not db_student:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -380,7 +381,7 @@ def list_my_demos(
     session: Session = Depends(get_session),
     current_user: UserSchema = Depends(get_current_active_user),
 ):
-    if current_user.role != "student" or current_user.role != "admin":
+    if current_user.role != "student" and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="User is not a student"
         )
