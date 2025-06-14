@@ -24,13 +24,18 @@ from app.students import crud as students_crud
 from app.students.schemas import StudentCreate as StudentCreateSchema
 from .models import User
 from app.core.schemas import APIResponse
+from app.students.crud import get_student_by_user_id
 
 router = APIRouter()
 
 
 @router.get("/users/me", response_model=UserSchema)
-async def read_users_me(current_user: UserSchema = Depends(get_current_active_user)):
-    return current_user
+async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session)):
+    # Try to find a student record for this user
+    student = get_student_by_user_id(db, current_user.id)
+    user_dict = current_user.dict()
+    user_dict["student_id"] = student.id if student else None
+    return UserSchema(**user_dict)
 
 
 @router.post("/login")
