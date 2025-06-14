@@ -394,3 +394,38 @@ async def get_dashboard_stats(db: Session = Depends(get_session)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving statistics: {str(e)}"
         )
+
+
+@router.get(
+    "/students/{student_id}/full",
+    response_model=APIResponse,
+    summary="Get all data for a student (admin only)",
+    dependencies=[Depends(require_admin_role)]
+)
+def get_full_student_data(
+    student_id: int,
+    db: Session = Depends(get_session)
+):
+    from app.admin.crud import get_student_by_id
+    from app.auth.crud import get_user_by_id
+    from app.admin.schemas import StudentDetail, UserBasic
+
+    student = get_student_by_id(db, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    user = get_user_by_id(db, student.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found for student")
+    student_detail = StudentDetail(
+        id=student.id,
+        user=UserBasic.model_validate(user),
+        batch=student.batch,
+        project=student.project,
+        certificates=student.certificates,
+        demos=student.demos,
+    )
+    return APIResponse(
+        success=True,
+        message="Student detail retrieved",
+        data=student_detail.model_dump()
+    )

@@ -19,6 +19,7 @@ class User(BaseModel):
     disabled: bool | None = None
     wakatime_access_token_encrypted: Optional[str] = None
     wakatime_refresh_token_encrypted: Optional[str] = None
+    student_id: Optional[int] = None # This is only for admin users
 
     class Config:
         from_attributes = True
