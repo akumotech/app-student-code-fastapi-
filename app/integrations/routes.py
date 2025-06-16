@@ -11,9 +11,15 @@ from app.auth.utils import get_current_active_user
 from app.integrations.model import WakaTimeCallbackPayload
 from app.config import settings
 from app.auth.auth import APIResponse
+# from app.integrations.scheduler import fetch_and_save_all_users_wakatime_data
 
 router = APIRouter()
 
+## TESTING ONLY
+# @router.post("/wakatime/fetch-manual")
+# async def wakatime_fetch_manual():
+#     await fetch_and_save_all_users_wakatime_data()
+#     return {"status": "Triggered"}
 
 @router.post(
     "/wakatime/today",

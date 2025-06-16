@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlmodel import Session, select
 from datetime import datetime
+import asyncio
 
 from app.config import settings
 from app.auth.database import engine
@@ -13,12 +14,27 @@ from app.integrations.model import (
 
 def start_scheduler():
     scheduler = BackgroundScheduler()
+
+    def run_async_job():
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # No event loop in this thread, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        if loop.is_running():
+            # If already running (e.g., in uvicorn), create a new task
+            asyncio.create_task(fetch_and_save_all_users_wakatime_data())
+        else:
+            # If not running, start the loop and run the coroutine
+            loop.run_until_complete(fetch_and_save_all_users_wakatime_data())
+
     scheduler.add_job(
-        fetch_and_save_all_users_wakatime_data, 
-        trigger='cron', 
+        run_async_job,
+        trigger='cron',
         hour=23,
         minute=30
-        )
+    )
     scheduler.start()
     print("WakaTime data fetching scheduler started. Will run daily at 23:30.")
 
