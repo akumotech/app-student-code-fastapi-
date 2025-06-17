@@ -20,6 +20,7 @@ EXCLUDE_PATHS_FOR_OPENAPI = [
     "/docs",
     "/openapi.json",
     "/api/signup/student",
+    # "/api/wakatime/fetch-manual" ## TESTING ONLY
 ]
 # You might need to add other public paths if any, e.g. from integrations router if they are public
 # Also, consider if the root path "/" or "/health" should be excluded.
