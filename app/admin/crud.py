@@ -94,7 +94,7 @@ def update_student(db: Session, student_id: int, student_update: StudentUpdate) 
 
 
 def get_recent_wakatime_stats(db: Session, user_id: int, days: int = 7) -> Optional[dict]:
-    """Get recent WakaTime statistics for a user"""
+    """Get recent WakaTime statistics for a user, including average per day."""
     end_date = datetime.utcnow().date()
     start_date = end_date - timedelta(days=days)
     
@@ -115,13 +115,20 @@ def get_recent_wakatime_stats(db: Session, user_id: int, days: int = 7) -> Optio
     
     # Calculate totals
     total_seconds = sum(summary.total_seconds for summary in summaries)
+    total_days = len(summaries)
+    avg_seconds = total_seconds / total_days if total_days else 0
+    avg_hours = int(avg_seconds // 3600)
+    avg_minutes = int((avg_seconds % 3600) // 60)
+    avg_digital = f"{avg_hours:02d}:{avg_minutes:02d}"
+    if avg_hours > 0:
+        avg_text = f"{avg_hours} hrs {avg_minutes} mins"
+    else:
+        avg_text = f"{avg_minutes} mins"
+    
+    # Format digital time for total
     total_hours = int(total_seconds // 3600)
     total_minutes = int((total_seconds % 3600) // 60)
-    
-    # Format digital time
     digital = f"{total_hours:02d}:{total_minutes:02d}"
-    
-    # Create readable text
     if total_hours > 0:
         text = f"{total_hours} hrs {total_minutes} mins"
     else:
@@ -133,7 +140,13 @@ def get_recent_wakatime_stats(db: Session, user_id: int, days: int = 7) -> Optio
         "minutes": total_minutes,
         "digital": digital,
         "text": text,
-        "last_updated": summaries[0].cached_at if summaries else None
+        "last_updated": summaries[0].cached_at if summaries else None,
+        "average_seconds": avg_seconds,
+        "average_hours": avg_hours,
+        "average_minutes": avg_minutes,
+        "average_digital": avg_digital,
+        "average_text": avg_text,
+        "days_counted": total_days
     }
 
 

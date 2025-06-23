@@ -82,7 +82,7 @@ async def login(
 
 
 @router.post("/signup", response_model=APIResponse)
-async def signup(data: SignupRequest, db: Session = Depends(get_session)):
+async def signup(data: SignupRequest, response: Response, db: Session = Depends(get_session)):
     if crud.get_user_by_email(db, email=data.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -92,8 +92,23 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
     user_create_data = UserCreate(
         email=data.email, name=data.name, password=data.password
     )
-    # crud.create_user now defaults to commit_session=True, which is fine for this standard signup.
     user = crud.create_user(db, user_in=user_create_data)
+
+    # Authenticate the new user: generate JWT and set cookie
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    response.set_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        httponly=True,
+        max_age=int(access_token_expires.total_seconds()),
+        expires=access_token_expires,
+        path="/",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+    )
 
     return APIResponse(
         success=True,
@@ -113,7 +128,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
     summary="Student Signup with Batch Key",
 )
 async def student_signup_with_key(
-    data: StudentSignupRequest, db: Session = Depends(get_session)
+    data: StudentSignupRequest, response: Response, db: Session = Depends(get_session)
 ):
     # 1. Verify batch registration key
     batch = (
@@ -166,6 +181,22 @@ async def student_signup_with_key(
         db.commit()
         db.refresh(new_user)
         db.refresh(new_student_profile)
+
+        # Authenticate the new user: generate JWT and set cookie
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": new_user.email}, expires_delta=access_token_expires
+        )
+        response.set_cookie(
+            key=settings.ACCESS_TOKEN_COOKIE_NAME,
+            value=access_token,
+            httponly=True,
+            max_age=int(access_token_expires.total_seconds()),
+            expires=access_token_expires,
+            path="/",
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+        )
 
     except HTTPException:  # Re-raise HTTPExceptions
         db.rollback()

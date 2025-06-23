@@ -55,6 +55,7 @@ class BatchInfo(BaseModel):
     end_date: Optional[date] = None
     slack_channel: str
     curriculum: Optional[str] = None
+    registration_key: Optional[str] = None
 
     class Config:
         from_attributes = True
