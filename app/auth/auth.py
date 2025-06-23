@@ -113,7 +113,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_session)):
     summary="Student Signup with Batch Key",
 )
 async def student_signup_with_key(
-    data: StudentSignupRequest, db: Session = Depends(get_session)
+    data: StudentSignupRequest, response: Response, db: Session = Depends(get_session)
 ):
     # 1. Verify batch registration key
     batch = (
@@ -166,6 +166,22 @@ async def student_signup_with_key(
         db.commit()
         db.refresh(new_user)
         db.refresh(new_student_profile)
+
+        # Authenticate the new user: generate JWT and set cookie
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": new_user.email}, expires_delta=access_token_expires
+        )
+        response.set_cookie(
+            key=settings.ACCESS_TOKEN_COOKIE_NAME,
+            value=access_token,
+            httponly=True,
+            max_age=int(access_token_expires.total_seconds()),
+            expires=access_token_expires,
+            path="/",
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+        )
 
     except HTTPException:  # Re-raise HTTPExceptions
         db.rollback()
