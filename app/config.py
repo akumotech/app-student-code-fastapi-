@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_COOKIE_NAME: str = "access_token_cookie"
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: str = ".akumotechnology.com"
 
     class Config:
         env_file = ".env"

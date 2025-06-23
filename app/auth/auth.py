@@ -1,5 +1,5 @@
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from datetime import timedelta
 from typing import Any
 
@@ -30,7 +30,9 @@ router = APIRouter()
 
 
 @router.get("/users/me", response_model=UserSchema)
-async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session)):
+async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session), request: Request = None):
+    if request is not None:
+        print("Incoming cookies:", request.cookies)
     # Try to find a student record for this user
     student = get_student_by_user_id(db, current_user.id)
     user_dict = current_user.dict()
@@ -63,6 +65,7 @@ async def login(
         path="/",
         secure=settings.COOKIE_SECURE,  # From config, True in prod over HTTPS
         samesite=settings.COOKIE_SAMESITE,  # From config, e.g., "lax" or "strict"
+        domain=settings.COOKIE_DOMAIN,  # Added for cross-subdomain auth
     )
 
     # Return user info in the response body, token is now in cookie
@@ -108,6 +111,7 @@ async def signup(data: SignupRequest, response: Response, db: Session = Depends(
         path="/",
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,  # Added for cross-subdomain auth
     )
 
     return APIResponse(
@@ -196,6 +200,7 @@ async def student_signup_with_key(
             path="/",
             secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE,
+            domain=settings.COOKIE_DOMAIN,  # Added for cross-subdomain auth
         )
 
     except HTTPException:  # Re-raise HTTPExceptions
@@ -307,5 +312,6 @@ async def logout(response: Response):
         path="/",
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,  # Ensure cookie is cleared across subdomains
     )
     return APIResponse(success=True, message="Successfully logged out.")
