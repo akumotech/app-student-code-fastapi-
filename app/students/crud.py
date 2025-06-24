@@ -182,3 +182,7 @@ def update_project(
 def delete_project(session: Session, db_project: Project) -> None:
     session.delete(db_project)
     session.flush()
+
+
+def get_students_by_batch(session: Session, batch_id: int) -> List[Student]:
+    return session.exec(select(Student).where(Student.batch_id == batch_id)).all()

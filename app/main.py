@@ -12,6 +12,7 @@ from app.admin.routes import router as admin_router
 from app.auth.utils import verify_access_token
 from app.integrations.scheduler import start_scheduler
 from app.config import settings
+from app.analytics.routes import router as analytics_router
 
 # Make EXCLUDE_PATHS a global or accessible constant for custom_openapi
 EXCLUDE_PATHS_FOR_OPENAPI = [
@@ -49,6 +50,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
 app.include_router(students_router, prefix="/api")
 app.include_router(admin_router, prefix="/api/v1/admin")
+app.include_router(analytics_router)
 
 # Redefine EXCLUDE_PATHS for the middleware using the same source if possible,
 # or ensure they are consistent.

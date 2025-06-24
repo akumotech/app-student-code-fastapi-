@@ -168,6 +168,21 @@ def delete_batch_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get(
+    "/batches/{batch_id}/students",
+    response_model=List[StudentRead],
+    summary="List Students in a Batch",
+    tags=["Batches", "Students"],
+)
+def list_students_in_batch(
+    batch_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    return crud.get_students_by_batch(session, batch_id)
+
+
 # --- Project Endpoints ---
 @router.post(
     "/projects/",
