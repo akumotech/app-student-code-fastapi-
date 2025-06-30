@@ -2,6 +2,7 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from datetime import timedelta
 from typing import Any
+import logging
 
 ## local imports
 from .schemas import (
@@ -208,7 +209,8 @@ async def student_signup_with_key(
         raise
     except Exception as e:
         db.rollback()
-        # Log the exception e
+        # Log the specific exception for debugging
+        logging.error(f"Student signup failed for user {data.email}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not complete student signup. Please try again later.",

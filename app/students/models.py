@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import UniqueConstraint
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 import uuid
 
 
@@ -69,6 +70,7 @@ class Student(SQLModel, table=True):
 
     certificates: List["Certificate"] = Relationship(back_populates="student")
     demos: List["Demo"] = Relationship(back_populates="student")
+    demo_signups: List["DemoSignup"] = Relationship(back_populates="student")
     # Add more student-specific fields as needed
 
 
@@ -94,3 +96,60 @@ class Demo(SQLModel, table=True):
     demo_date: Optional[date] = None
     status: Optional[str] = Field(default="confirmed")
     student: Optional["Student"] = Relationship(back_populates="demos")
+    demo_signups: List["DemoSignup"] = Relationship(back_populates="demo")
+
+
+class DemoSession(SQLModel, table=True):
+    """Weekly Friday Demo Sessions"""
+    __tablename__ = "demo_session"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_date: date = Field(index=True)  # The Friday date
+    
+    # Session configuration
+    is_active: bool = Field(default=True)  # Can students sign up?
+    is_cancelled: bool = Field(default=False)  # Is this session cancelled?
+    max_scheduled: Optional[int] = Field(default=None)  # Optional limit on signups
+    
+    # Metadata
+    title: Optional[str] = Field(default="Friday Demo Session")
+    description: Optional[str] = None
+    notes: Optional[str] = None  # Admin notes about the session
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    signups: List["DemoSignup"] = Relationship(back_populates="session")
+
+
+class DemoSignup(SQLModel, table=True):
+    """Student signup for a specific demo session"""
+    __tablename__ = "demo_signup"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="demo_session.id")
+    student_id: int = Field(foreign_key="student.id")
+    demo_id: Optional[int] = Field(default=None, foreign_key="demo.id")
+    
+    # Status tracking
+    status: str = Field(default="scheduled")  # scheduled, presented, no_show, cancelled
+    signup_notes: Optional[str] = None  # Student's notes about their demo
+    
+    # Presentation tracking (admin filled)
+    did_present: Optional[bool] = Field(default=None)
+    presentation_notes: Optional[str] = None  # Admin notes after presentation
+    presentation_rating: Optional[int] = Field(default=None)  # 1-5 rating by admin
+    
+    # Timestamps
+    scheduled_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    session: "DemoSession" = Relationship(back_populates="signups")
+    student: "Student" = Relationship(back_populates="demo_signups")
+    demo: Optional["Demo"] = Relationship(back_populates="demo_signups")
+    
+    # Ensure a student can only sign up once per session
+    __table_args__ = (UniqueConstraint("session_id", "student_id", name="unique_student_session"),)
