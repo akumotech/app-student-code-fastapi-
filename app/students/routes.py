@@ -23,6 +23,10 @@ from .schemas import (
     ProjectCreate,
     ProjectRead,
     ProjectUpdate,  # Added ProjectUpdate
+    DemoSessionSummary,
+    DemoSignupCreate,
+    DemoSignupRead,
+    DemoSignupUpdate,
 )
 
 from app.auth.database import get_session
@@ -166,6 +170,21 @@ def delete_batch_endpoint(
     crud.delete_batch(session, db_batch=db_batch)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/batches/{batch_id}/students",
+    response_model=List[StudentRead],
+    summary="List Students in a Batch",
+    tags=["Batches", "Students"],
+)
+def list_students_in_batch(
+    batch_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    require_roles(current_user, ["admin", "instructor"])
+    return crud.get_students_by_batch(session, batch_id)
 
 
 # --- Project Endpoints ---
@@ -587,4 +606,263 @@ def delete_student_demo(
         )
     crud.delete_demo(session, db_demo=db_demo)
     session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Demo Session Endpoints (Student) ---
+@router.get(
+    "/demo-sessions",
+    response_model=List[DemoSessionSummary],
+    summary="List Available Demo Sessions",
+    tags=["Demo Sessions"],
+)
+def list_available_demo_sessions(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """List available demo sessions for the current student"""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only students can view demo sessions"
+        )
+    
+    # Get student info
+    db_student = session.query(Student).filter(Student.user_id == current_user.id).first()
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+    
+    # Get sessions with signup counts and user signup status
+    sessions_data = crud.get_demo_sessions_with_signup_counts(
+        session, student_id=db_student.id, batch_id=db_student.batch_id
+    )
+    
+    result = []
+    for demo_session, signup_count, user_scheduled in sessions_data:
+        # Only show active, non-cancelled sessions
+        if demo_session.is_active and not demo_session.is_cancelled:
+            session_summary = DemoSessionSummary(
+                id=demo_session.id,
+                session_date=demo_session.session_date,
+                is_active=demo_session.is_active,
+                is_cancelled=demo_session.is_cancelled,
+                max_scheduled=demo_session.max_scheduled,
+                title=demo_session.title,
+                signup_count=signup_count,
+                user_scheduled=user_scheduled
+            )
+            result.append(session_summary)
+    
+    return result
+
+
+@router.post(
+    "/demo-sessions/{session_id}/signup",
+    response_model=DemoSignupRead,
+    summary="Sign Up for Demo Session",
+    tags=["Demo Sessions"],
+)
+def signup_for_demo_session(
+    session_id: int,
+    signup_data: DemoSignupCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """Sign up for a demo session"""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can sign up for demo sessions"
+        )
+    
+    # Get student info
+    db_student = session.query(Student).filter(Student.user_id == current_user.id).first()
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+    
+    # Get demo session
+    demo_session = crud.get_demo_session(session, session_id)
+    if not demo_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo session not found"
+        )
+    
+    # Validation checks
+    if not demo_session.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This demo session is not accepting signups"
+        )
+    
+    if demo_session.is_cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This demo session has been cancelled"
+        )
+    
+    # Note: Since demo sessions are not tied to batches directly,
+    # students from any batch can sign up for any active session
+    
+    # Check if already signed up
+    existing_signup = crud.get_demo_signup_by_session_and_student(
+        session, session_id, db_student.id
+    )
+    if existing_signup:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are already signed up for this session"
+        )
+    
+    # Check signup limit
+    current_count, max_limit = crud.check_session_signup_limit(session, session_id)
+    if max_limit and current_count >= max_limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This demo session is full"
+        )
+    
+    # Validate demo ownership if provided
+    if signup_data.demo_id:
+        demo = crud.get_demo(session, signup_data.demo_id)
+        if not demo or demo.student_id != db_student.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Demo not found or does not belong to you"
+            )
+    
+    # Create signup
+    signup = crud.create_demo_signup(
+        session, session_id, db_student.id, signup_data
+    )
+    session.commit()
+    session.refresh(signup)
+    
+    return signup
+
+
+@router.get(
+    "/students/me/demo-signups",
+    response_model=List[DemoSignupRead],
+    summary="My Demo Signups",
+    tags=["My Student Data"],
+)
+def list_my_demo_signups(
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """List all demo signups for the current student"""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can view their signups"
+        )
+    
+    db_student = session.query(Student).filter(Student.user_id == current_user.id).first()
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+    
+    signups = crud.get_demo_signups_by_student(session, db_student.id)
+    return signups
+
+
+@router.put(
+    "/demo-signups/{signup_id}",
+    response_model=DemoSignupRead,
+    summary="Update My Demo Signup",
+    tags=["Demo Sessions"],
+)
+def update_my_demo_signup(
+    signup_id: int,
+    signup_update: DemoSignupUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """Update a demo signup (student can only update their own)"""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can update their signups"
+        )
+    
+    # Get student info
+    db_student = session.query(Student).filter(Student.user_id == current_user.id).first()
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+    
+    # Get signup
+    db_signup = crud.get_demo_signup(session, signup_id)
+    if not db_signup or db_signup.student_id != db_student.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo signup not found or does not belong to you"
+        )
+    
+    # Validate demo ownership if being updated
+    if signup_update.demo_id:
+        demo = crud.get_demo(session, signup_update.demo_id)
+        if not demo or demo.student_id != db_student.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Demo not found or does not belong to you"
+            )
+    
+    # Update signup
+    updated_signup = crud.update_demo_signup(session, db_signup, signup_update)
+    session.commit()
+    session.refresh(updated_signup)
+    
+    return updated_signup
+
+
+@router.delete(
+    "/demo-signups/{signup_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Cancel My Demo Signup",
+    tags=["Demo Sessions"],
+)
+def cancel_my_demo_signup(
+    signup_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """Cancel a demo signup"""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can cancel their signups"
+        )
+    
+    # Get student info
+    db_student = session.query(Student).filter(Student.user_id == current_user.id).first()
+    if not db_student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+    
+    # Get signup
+    db_signup = crud.get_demo_signup(session, signup_id)
+    if not db_signup or db_signup.student_id != db_student.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo signup not found or does not belong to you"
+        )
+    
+    # Delete signup
+    crud.delete_demo_signup(session, db_signup)
+    session.commit()
+    
     return Response(status_code=status.HTTP_204_NO_CONTENT)

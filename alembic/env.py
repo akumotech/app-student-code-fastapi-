@@ -16,9 +16,11 @@ from sqlmodel import SQLModel
 config = context.config
 
 # Set the database URL from environment
+# Use localhost for local development, 'db' for Docker
+default_url = "postgresql://postgres:redhat1234@localhost:5432/postgres"
 config.set_main_option(
     "sqlalchemy.url",
-    os.getenv("DATABASE_URL", "postgresql://postgres:redhat1234@db:5432/postgres")
+    os.getenv("DATABASE_URL", default_url)
 )
 
 # Interpret the config file for Python logging

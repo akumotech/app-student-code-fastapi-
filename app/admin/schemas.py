@@ -39,7 +39,6 @@ class DemoInfo(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    link: Optional[str] = None
     demo_date: Optional[date] = None
     status: Optional[str] = None
 

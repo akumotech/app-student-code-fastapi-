@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlmodel import Session
 from typing import Any, Optional, List
 
@@ -25,7 +25,15 @@ from .schemas import (
     ProjectInfo,
     WakaTimeStats
 )
+from app.students.schemas import (
+    DemoSessionCreate,
+    DemoSessionUpdate,
+    DemoSessionRead,
+    DemoSignupRead,
+    DemoSignupAdminUpdate,
+)
 from app.core.schemas import APIResponse
+from app.analytics import services as analytics_service
 
 router = APIRouter(
     tags=["Admin"],
@@ -42,6 +50,11 @@ def require_admin_role(current_user: UserSchema = Depends(get_current_active_use
             detail="Admin privileges required for this action.",
         )
     return current_user
+
+
+def get_current_admin_user(current_user: UserSchema = Depends(get_current_active_user)):
+    """Alias for require_admin_role for consistency"""
+    return require_admin_role(current_user)
 
 
 def convert_user_to_overview(user: User, student: Optional[Student] = None, wakatime_stats: Optional[dict] = None) -> UserOverview:
@@ -430,3 +443,309 @@ def get_full_student_data(
         message="Student detail retrieved",
         data=student_detail.model_dump()
     )
+
+# --- Analytics endpoints ---
+@router.get("/analytics/overview", response_model=dict, tags=["Analytics"])
+def get_overview_analytics(
+    batch_id: Optional[int] = None,
+    db: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Get overview analytics"""
+    try:
+        return analytics_service.get_overview_stats(db, batch_id)
+    except Exception as e:
+        # Fallback to basic stats if analytics service doesn't exist
+        return {"message": "Analytics service not available", "error": str(e)}
+
+
+@router.get("/analytics/demos", response_model=List[dict], tags=["Analytics"])
+def get_demo_trends(
+    batch_id: Optional[int] = None,
+    db: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Get demo trends over time"""
+    try:
+        return analytics_service.get_demo_trends(db, batch_id)
+    except Exception as e:
+        return [{"message": "Analytics service not available", "error": str(e)}]
+
+
+@router.get("/analytics/wakatime", response_model=List[dict], tags=["Analytics"])
+def get_wakatime_trends(
+    batch_id: Optional[int] = None,
+    db: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Get WakaTime activity trends"""
+    try:
+        return analytics_service.get_wakatime_trends(db, batch_id)
+    except Exception as e:
+        return [{"message": "Analytics service not available", "error": str(e)}]
+
+
+# --- Demo Session Management (Admin) ---
+@router.get(
+    "/demo-sessions",
+    response_model=List[DemoSessionRead],
+    summary="List Demo Sessions",
+    tags=["Demo Sessions"],
+)
+def list_demo_sessions(
+    include_inactive: bool = False,
+    include_cancelled: bool = False,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """List all demo sessions with optional filtering"""
+    from app.students.crud import get_demo_sessions_with_signup_counts
+    
+    sessions_data = get_demo_sessions_with_signup_counts(session)
+    
+    result = []
+    for demo_session, signup_count, _ in sessions_data:
+        # Filter based on admin preferences
+        if not include_inactive and not demo_session.is_active:
+            continue
+        if not include_cancelled and demo_session.is_cancelled:
+            continue
+            
+        session_dict = demo_session.dict()
+        session_dict["signup_count"] = signup_count
+        session_dict["signups"] = []  # Will be populated if needed
+        result.append(session_dict)
+    
+    return result
+
+
+@router.post(
+    "/demo-sessions",
+    response_model=DemoSessionRead,
+    summary="Create Demo Session",
+    tags=["Demo Sessions"],
+)
+def create_demo_session(
+    demo_session_create: DemoSessionCreate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Create a new demo session"""
+    from app.students.crud import create_demo_session, get_demo_session_by_date
+    
+    # Check if session already exists for this date
+    existing_session = get_demo_session_by_date(
+        session, demo_session_create.session_date
+    )
+    if existing_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Demo session already exists for this date"
+        )
+    
+    demo_session = create_demo_session(session, demo_session_create)
+    session.commit()
+    session.refresh(demo_session)
+    
+    # Convert to response format
+    session_dict = demo_session.dict()
+    session_dict["signup_count"] = 0
+    session_dict["signups"] = []
+    
+    return session_dict
+
+
+@router.get(
+    "/demo-sessions/{session_id}",
+    response_model=DemoSessionRead,
+    summary="Get Demo Session",
+    tags=["Demo Sessions"],
+)
+def get_demo_session_detail(
+    session_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Get detailed info about a demo session including signups"""
+    from app.students.crud import get_demo_session, get_demo_signups_by_session
+    
+    demo_session = get_demo_session(session, session_id)
+    if not demo_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo session not found"
+        )
+    
+    # Get signups for this session
+    signups = get_demo_signups_by_session(session, session_id)
+    
+    session_dict = demo_session.dict()
+    session_dict["signup_count"] = len(signups)
+    session_dict["signups"] = [signup.dict() for signup in signups]
+    
+    return session_dict
+
+
+@router.put(
+    "/demo-sessions/{session_id}",
+    response_model=DemoSessionRead,
+    summary="Update Demo Session",
+    tags=["Demo Sessions"],
+)
+def update_demo_session(
+    session_id: int,
+    session_update: DemoSessionUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Update a demo session"""
+    from app.students.crud import get_demo_session, update_demo_session
+    
+    db_session = get_demo_session(session, session_id)
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo session not found"
+        )
+    
+    updated_session = update_demo_session(session, db_session, session_update)
+    session.commit()
+    session.refresh(updated_session)
+    
+    # Convert to response format
+    session_dict = updated_session.dict()
+    session_dict["signup_count"] = 0  # Could be calculated if needed
+    session_dict["signups"] = []
+    
+    return session_dict
+
+
+@router.delete(
+    "/demo-sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Demo Session",
+    tags=["Demo Sessions"],
+)
+def delete_demo_session(
+    session_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Delete a demo session and all associated signups"""
+    from app.students.crud import get_demo_session, delete_demo_session
+    
+    db_session = get_demo_session(session, session_id)
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo session not found"
+        )
+    
+    delete_demo_session(session, db_session)
+    session.commit()
+    
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Demo Signup Management (Admin) ---
+@router.get(
+    "/demo-sessions/{session_id}/signups",
+    response_model=List[DemoSignupRead],
+    summary="List Session Signups",
+    tags=["Demo Sessions"],
+)
+def list_session_signups(
+    session_id: int,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """List all signups for a specific demo session"""
+    from app.students.crud import get_demo_session, get_demo_signups_by_session
+    
+    # Verify session exists
+    demo_session = get_demo_session(session, session_id)
+    if not demo_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo session not found"
+        )
+    
+    signups = get_demo_signups_by_session(session, session_id)
+    return signups
+
+
+@router.put(
+    "/demo-signups/{signup_id}/admin",
+    response_model=DemoSignupRead,
+    summary="Update Signup (Admin)",
+    tags=["Demo Sessions"],
+)
+def update_signup_admin(
+    signup_id: int,
+    admin_update: DemoSignupAdminUpdate,
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Update signup after presentation (admin only)"""
+    from app.students.crud import get_demo_signup, update_demo_signup_admin
+    
+    db_signup = get_demo_signup(session, signup_id)
+    if not db_signup:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo signup not found"
+        )
+    
+    updated_signup = update_demo_signup_admin(session, db_signup, admin_update)
+    session.commit()
+    session.refresh(updated_signup)
+    
+    return updated_signup
+
+
+# --- Bulk Operations ---
+@router.post(
+    "/demo-sessions/bulk-create",
+    response_model=List[DemoSessionRead],
+    summary="Bulk Create Demo Sessions",
+    tags=["Demo Sessions"],
+)
+def bulk_create_demo_sessions(
+    sessions_data: List[DemoSessionCreate],
+    session: Session = Depends(get_session),
+    current_user: UserSchema = Depends(get_current_admin_user),
+):
+    """Create multiple demo sessions at once"""
+    from app.students.crud import create_demo_session, get_demo_session_by_date
+    
+    created_sessions = []
+    errors = []
+    
+    for session_create in sessions_data:
+        try:
+            # Check if session already exists
+            existing = get_demo_session_by_date(
+                session, session_create.session_date
+            )
+            if existing:
+                errors.append(f"Session already exists for {session_create.session_date}")
+                continue
+            
+            demo_session = create_demo_session(session, session_create)
+            session_dict = demo_session.dict()
+            session_dict["signup_count"] = 0
+            session_dict["signups"] = []
+            created_sessions.append(session_dict)
+            
+        except Exception as e:
+            errors.append(f"Error creating session for {session_create.session_date}: {str(e)}")
+    
+    if errors:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Errors occurred: {'; '.join(errors)}"
+        )
+    
+    session.commit()
+    return created_sessions

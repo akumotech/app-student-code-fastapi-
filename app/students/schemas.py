@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
+from pydantic import Field
 
 
 class BatchInstructorLinkBase(BaseModel):
@@ -118,7 +119,6 @@ class CertificateRead(CertificateBase):
 class DemoBase(BaseModel):
     title: str
     description: Optional[str] = None
-    link: Optional[str] = None
     date: Optional[date] = None
     status: Optional[str] = "confirmed"
 
@@ -146,3 +146,110 @@ class ProjectUpdate(BaseModel):
     end_date: Optional[date] = None
     happy_hour: Optional[str] = None
     batch_id: Optional[int] = None
+
+
+# --- Demo Session Schemas ---
+class DemoSessionBase(BaseModel):
+    session_date: date
+    is_active: bool = True
+    is_cancelled: bool = False
+    max_scheduled: Optional[int] = None
+    title: Optional[str] = "Friday Demo Session"
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DemoSessionCreate(DemoSessionBase):
+    pass
+
+
+class DemoSessionUpdate(BaseModel):
+    session_date: Optional[date] = None
+    is_active: Optional[bool] = None
+    is_cancelled: Optional[bool] = None
+    max_scheduled: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DemoSessionRead(DemoSessionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    signup_count: int = 0  # Will be populated via query
+    signups: List["DemoSignupRead"] = []
+
+    class Config:
+        from_attributes = True
+
+
+class DemoSessionSummary(BaseModel):
+    """Lightweight version for listing sessions"""
+    id: int
+    session_date: date
+    is_active: bool
+    is_cancelled: bool
+    max_scheduled: Optional[int] = None
+    title: Optional[str] = None
+    signup_count: int = 0
+    user_scheduled: bool = False  # Will be populated based on current user
+
+    class Config:
+        from_attributes = True
+
+
+# --- Demo Signup Schemas ---
+class DemoSignupBase(BaseModel):
+    demo_id: Optional[int] = None
+    signup_notes: Optional[str] = None
+
+
+class DemoSignupCreate(DemoSignupBase):
+    pass
+
+
+class DemoSignupUpdate(BaseModel):
+    demo_id: Optional[int] = None
+    signup_notes: Optional[str] = None
+
+
+class DemoSignupRead(DemoSignupBase):
+    id: int
+    session_id: int
+    student_id: int
+    status: str
+    did_present: Optional[bool] = None
+    presentation_notes: Optional[str] = None
+    presentation_rating: Optional[int] = None
+    scheduled_at: datetime
+    updated_at: datetime
+    
+    # Nested relationships
+    student: Optional["StudentBasic"] = None
+    demo: Optional["DemoRead"] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DemoSignupAdminUpdate(BaseModel):
+    """Admin-specific fields for updating signup after presentation"""
+    did_present: Optional[bool] = None
+    presentation_notes: Optional[str] = None
+    presentation_rating: Optional[int] = Field(None, ge=1, le=5)
+    status: Optional[str] = None
+
+
+class StudentBasic(BaseModel):
+    """Basic student info for nested relationships"""
+    id: int
+    user_id: int
+    
+    class Config:
+        from_attributes = True
+
+
+# Update forward references
+DemoSessionRead.model_rebuild()
+DemoSignupRead.model_rebuild()
