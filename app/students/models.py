@@ -92,7 +92,6 @@ class Demo(SQLModel, table=True):
     student_id: int = Field(foreign_key="student.id")
     title: str
     description: Optional[str] = None
-    link: Optional[str] = None
     demo_date: Optional[date] = None
     status: Optional[str] = Field(default="confirmed")
     student: Optional["Student"] = Relationship(back_populates="demos")

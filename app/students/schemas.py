@@ -119,7 +119,6 @@ class CertificateRead(CertificateBase):
 class DemoBase(BaseModel):
     title: str
     description: Optional[str] = None
-    link: Optional[str] = None
     date: Optional[date] = None
     status: Optional[str] = "confirmed"
 
