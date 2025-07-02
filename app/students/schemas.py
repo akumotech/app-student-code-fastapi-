@@ -245,6 +245,8 @@ class StudentBasic(BaseModel):
     """Basic student info for nested relationships"""
     id: int
     user_id: int
+    name: str
+    email: str
     
     class Config:
         from_attributes = True
