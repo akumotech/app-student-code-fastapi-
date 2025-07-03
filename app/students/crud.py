@@ -301,19 +301,100 @@ def get_demo_sessions_with_signup_counts(
 # --- Demo Signup CRUD ---
 def get_demo_signups_by_session(
     session: Session, session_id: int
-) -> List[DemoSignup]:
-    """Get all signups for a specific demo session"""
-    query = select(DemoSignup).where(DemoSignup.session_id == session_id)
-    return session.exec(query).all()
+) -> List[dict]:
+    """Get all signups for a specific demo session with student user details"""
+    from app.auth.models import User
+    
+    # Use a join query to get signup, student, and user data in one query
+    query = (
+        select(
+            DemoSignup,
+            Student,
+            User.name,
+            User.email
+        )
+        .join(Student, DemoSignup.student_id == Student.id)
+        .join(User, Student.user_id == User.id)
+        .where(DemoSignup.session_id == session_id)
+        .order_by(DemoSignup.scheduled_at.desc())
+    )
+    
+    results = session.exec(query).all()
+    
+    # Convert results to dict format with enhanced student data
+    signups = []
+    for signup, student_data, user_name, user_email in results:
+        # Create a dict representation for the enhanced student data
+        enhanced_student = {
+            "id": student_data.id,
+            "user_id": student_data.user_id,
+            "name": user_name,
+            "email": user_email
+        }
+        
+        # Convert signup to dict and add enhanced student data
+        signup_dict = signup.__dict__.copy()
+        signup_dict["student"] = enhanced_student
+        
+        # Load demo if exists
+        if signup.demo_id:
+            demo = session.get(Demo, signup.demo_id)
+            signup_dict["demo"] = demo.__dict__ if demo else None
+        else:
+            signup_dict["demo"] = None
+        
+        signups.append(signup_dict)
+    
+    return signups
 
 
 def get_demo_signups_by_student(
     session: Session, student_id: int
-) -> List[DemoSignup]:
-    """Get all demo signups by a student"""
-    query = select(DemoSignup).where(DemoSignup.student_id == student_id)
-    query = query.order_by(DemoSignup.scheduled_at.desc())
-    return session.exec(query).all()
+) -> List[dict]:
+    """Get all demo signups by a student with student user details"""
+    from app.auth.models import User
+    
+    # Use a join query to get signup, student, and user data
+    query = (
+        select(
+            DemoSignup,
+            Student,
+            User.name,
+            User.email
+        )
+        .join(Student, DemoSignup.student_id == Student.id)
+        .join(User, Student.user_id == User.id)
+        .where(DemoSignup.student_id == student_id)
+        .order_by(DemoSignup.scheduled_at.desc())
+    )
+    
+    results = session.exec(query).all()
+    
+    # Convert results to dict format with enhanced student data
+    signups = []
+    for signup, student_data, user_name, user_email in results:
+        # Create a dict representation for the enhanced student data
+        enhanced_student = {
+            "id": student_data.id,
+            "user_id": student_data.user_id,
+            "name": user_name,
+            "email": user_email
+        }
+        
+        # Convert signup to dict and add enhanced student data
+        signup_dict = signup.__dict__.copy()
+        signup_dict["student"] = enhanced_student
+        
+        # Load demo if exists
+        if signup.demo_id:
+            demo = session.get(Demo, signup.demo_id)
+            signup_dict["demo"] = demo.__dict__ if demo else None
+        else:
+            signup_dict["demo"] = None
+        
+        signups.append(signup_dict)
+    
+    return signups
 
 
 def get_demo_signup(session: Session, signup_id: int) -> Optional[DemoSignup]:
