@@ -530,12 +530,9 @@ async def create_demo_session(
     session: Session = Depends(get_session),
     current_user: UserSchema = Depends(get_current_admin_user),
 ):
-    """Create a new demo session with Zoom meeting and Slack notification"""
+    """Create a new demo session with manual meeting link entry and optional Slack notification"""
     from app.students.crud import create_demo_session, get_demo_session_by_date
-    from app.integrations.zoom import create_zoom_meeting
     from app.integrations.slack import send_demo_session_notification
-    from datetime import datetime, time
-    import pytz
     
     # Check if session already exists for this date
     existing_session = get_demo_session_by_date(
@@ -547,64 +544,28 @@ async def create_demo_session(
             detail="Demo session already exists for this date"
         )
     
-    print("Creating Demo Session and Zoom meeting Initiated")
-    # Create Zoom meeting
-    zoom_link = None
-    try:
-        # Convert Central Time to UTC for Zoom API
-        central_tz = pytz.timezone('America/Chicago')
-        session_start_time_central = datetime.combine(
-            demo_session_create.session_date, 
-            demo_session_create.session_time
-        )
-        print("Session Date:", session_start_time_central)
-        
-        # Localize to Central Time, then convert to UTC
-        session_start_time_central = central_tz.localize(session_start_time_central)
-        session_start_time = session_start_time_central.astimezone(pytz.UTC)
-        
-        zoom_meeting = await create_zoom_meeting(
-            topic=demo_session_create.title or "Friday Demo Session",
-            start_time=session_start_time,
-            duration=120,  # 2 hours
-            agenda=demo_session_create.description
-        )
-        zoom_link = zoom_meeting.get("join_url")
-        
-        print(f"Created Zoom meeting: {zoom_meeting.get('meeting_id')}")
-        
-    except Exception as e:
-        print(f"Failed to create Zoom meeting: {e}")
-        # Continue with session creation even if Zoom fails
-    
-    # Add zoom_link to the session data
-    session_data = demo_session_create.dict()
-    session_data["zoom_link"] = zoom_link
-    
     # Create the demo session
     demo_session = create_demo_session(session, demo_session_create)
-    if zoom_link:
-        demo_session.zoom_link = zoom_link
-
     session.commit()
     session.refresh(demo_session)
     
-    # Send Slack notification
-    try:
-        # Format session time for display
-        session_time_str = demo_session.session_time.strftime("%I:%M %p")
-        
-        await send_demo_session_notification(
-            session_date=demo_session.session_date,
-            session_title=demo_session.title,
-            zoom_link=zoom_link,
-            description=demo_session.description,
-            session_time=session_time_str
-        )
-        print("Slack notification sent successfully")
-    except Exception as e:
-        print(f"Failed to send Slack notification: {e}")
-        # Continue even if Slack notification fails
+    # Send Slack notification only if meeting link is provided
+    if demo_session.zoom_link:
+        try:
+            # Format session time for display
+            session_time_str = demo_session.session_time.strftime("%I:%M %p")
+            
+            await send_demo_session_notification(
+                session_date=demo_session.session_date,
+                session_title=demo_session.title,
+                meeting_link=demo_session.zoom_link,
+                description=demo_session.description,
+                session_time=session_time_str
+            )
+            print("Slack notification sent successfully")
+        except Exception as e:
+            print(f"Failed to send Slack notification: {e}")
+            # Continue even if Slack notification fails
     
     # Convert to response format
     session_dict = demo_session.dict()

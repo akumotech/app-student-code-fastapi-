@@ -21,21 +21,8 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     COOKIE_DOMAIN: str = ".akumotechnology.com"
 
-    # Zoom API Configuration (OAuth - if you want to use it)
-    ZOOM_ACCOUNT_ID: str = ""
-    ZOOM_CLIENT_ID: str = ""
-    ZOOM_CLIENT_SECRET: str = ""
-    ZOOM_USER_ID: str = ""
-    
-    # Alternative Video Platform Configuration (No OAuth Required)
-    # Choose your preferred video platform
-    DEFAULT_VIDEO_PLATFORM: str = "jitsi_meet"  # Options: google_meet, jitsi_meet, microsoft_teams, zoom_personal, manual
-    
-    # Zoom Personal Meeting Room (if using zoom_personal)
-    ZOOM_PERSONAL_MEETING_ID: str = ""  # Your personal meeting room ID
-    
-    # Webex Personal Room (if using webex_personal)
-    WEBEX_PERSONAL_ROOM: str = ""  # Your personal room name
+    # Video Platform Configuration
+    # Meeting links are now entered manually through the admin interface
     
     # Slack API Configuration
     SLACK_BOT_TOKEN: str = ""
@@ -44,6 +31,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore extra environment variables
 
     @property
     def fernet(self) -> Fernet:

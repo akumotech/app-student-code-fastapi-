@@ -62,7 +62,7 @@ async def send_slack_notification(
 async def send_demo_session_notification(
     session_date: date,
     session_title: str,
-    zoom_link: Optional[str] = None,
+    meeting_link: Optional[str] = None,
     description: Optional[str] = None,
     session_time: Optional[str] = None
 ) -> bool:
@@ -79,8 +79,8 @@ async def send_demo_session_notification(
     if description:
         message += f"\n📋 Description: {description}"
     
-    if zoom_link:
-        message += f"\n🔗 Zoom Link: {zoom_link}"
+    if meeting_link:
+        message += f"\n🔗 Meeting Link: {meeting_link}"
     
     message += "\n\n📌 Don't forget to register your demo topics! Sign up now to secure your spot."
     
@@ -117,12 +117,12 @@ async def send_demo_session_notification(
             }
         })
     
-    if zoom_link:
+    if meeting_link:
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Zoom Link:*\n<{zoom_link}|Join Meeting>"
+                "text": f"*Meeting Link:*\n<{meeting_link}|Join Meeting>"
             }
         })
     
@@ -158,7 +158,7 @@ async def send_demo_reminder_notification(
     session_date: date,
     session_title: str,
     registered_count: int,
-    zoom_link: Optional[str] = None,
+    meeting_link: Optional[str] = None,
     session_time: Optional[str] = None
 ) -> bool:
     """Send a reminder notification about an upcoming demo session"""
@@ -169,8 +169,8 @@ async def send_demo_reminder_notification(
     
     message = f"🔔 Reminder: Friday Demo Session Tomorrow!\n\n📅 Date: {formatted_date}\n📝 Title: {session_title}\n👥 Registered: {registered_count} students"
     
-    if zoom_link:
-        message += f"\n🔗 Zoom Link: {zoom_link}"
+    if meeting_link:
+        message += f"\n🔗 Meeting Link: {meeting_link}"
     
     message += "\n\n⏰ Get ready to showcase your work!"
     
@@ -198,12 +198,12 @@ async def send_demo_reminder_notification(
         }
     ]
     
-    if zoom_link:
+    if meeting_link:
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Zoom Link:*\n<{zoom_link}|Join Meeting>"
+                "text": f"*Meeting Link:*\n<{meeting_link}|Join Meeting>"
             }
         })
     
