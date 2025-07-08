@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pydantic import Field
 
 
@@ -151,12 +151,14 @@ class ProjectUpdate(BaseModel):
 # --- Demo Session Schemas ---
 class DemoSessionBase(BaseModel):
     session_date: date
+    session_time: time = time(15, 0)  # Default 3 PM Central Time
     is_active: bool = True
     is_cancelled: bool = False
     max_scheduled: Optional[int] = None
     title: Optional[str] = "Friday Demo Session"
     description: Optional[str] = None
     notes: Optional[str] = None
+    zoom_link: Optional[str] = None
 
 
 class DemoSessionCreate(DemoSessionBase):
@@ -165,12 +167,14 @@ class DemoSessionCreate(DemoSessionBase):
 
 class DemoSessionUpdate(BaseModel):
     session_date: Optional[date] = None
+    session_time: Optional[time] = None
     is_active: Optional[bool] = None
     is_cancelled: Optional[bool] = None
     max_scheduled: Optional[int] = None
     title: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
+    zoom_link: Optional[str] = None
 
 
 class DemoSessionRead(DemoSessionBase):
