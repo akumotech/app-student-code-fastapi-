@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from datetime import timedelta
 from typing import Any
 import logging
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 ## local imports
 from .schemas import (
@@ -27,13 +29,14 @@ from .models import User
 from app.core.schemas import APIResponse
 from app.students.crud import get_student_by_user_id
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter()
 
 
 @router.get("/users/me", response_model=UserSchema)
-async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session), request: Request = None):
-    if request is not None:
-        print("Incoming cookies:", request.cookies)
+async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session)):
     # Try to find a student record for this user
     student = get_student_by_user_id(db, current_user.id)
     user_dict = current_user.dict()
@@ -42,8 +45,12 @@ async def read_users_me(current_user: UserSchema = Depends(get_current_active_us
 
 
 @router.post("/login")
+@limiter.limit("5/minute")  # 5 attempts per minute per IP
 async def login(
-    data: LoginRequest, response: Response, db: Session = Depends(get_session)
+    request: Request,
+    data: LoginRequest, 
+    response: Response, 
+    db: Session = Depends(get_session)
 ):
     user = await authenticate_user(db, data.email, data.password)
     if not user:
@@ -86,7 +93,13 @@ async def login(
 
 
 @router.post("/signup", response_model=APIResponse)
-async def signup(data: SignupRequest, response: Response, db: Session = Depends(get_session)):
+@limiter.limit("3/minute")  # 3 signups per minute per IP
+async def signup(
+    request: Request,
+    data: SignupRequest, 
+    response: Response, 
+    db: Session = Depends(get_session)
+):
     if crud.get_user_by_email(db, email=data.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -132,8 +145,12 @@ async def signup(data: SignupRequest, response: Response, db: Session = Depends(
     response_model=APIResponse,
     summary="Student Signup with Batch Key",
 )
+@limiter.limit("3/minute")  # 3 student signups per minute per IP
 async def student_signup_with_key(
-    data: StudentSignupRequest, response: Response, db: Session = Depends(get_session)
+    request: Request,
+    data: StudentSignupRequest, 
+    response: Response, 
+    db: Session = Depends(get_session)
 ):
     # 1. Verify batch registration key
     batch = (

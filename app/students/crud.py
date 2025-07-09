@@ -402,6 +402,50 @@ def get_demo_signup(session: Session, signup_id: int) -> Optional[DemoSignup]:
     return session.get(DemoSignup, signup_id)
 
 
+def get_demo_signup_enhanced(session: Session, signup_id: int) -> Optional[dict]:
+    """Get a single demo signup with enhanced student data (name, email)"""
+    from app.auth.models import User
+    
+    query = (
+        select(
+            DemoSignup,
+            Student,
+            User.name,
+            User.email
+        )
+        .join(Student, DemoSignup.student_id == Student.id)
+        .join(User, Student.user_id == User.id)
+        .where(DemoSignup.id == signup_id)
+    )
+    
+    result = session.exec(query).first()
+    if not result:
+        return None
+    
+    signup, student_data, user_name, user_email = result
+    
+    # Create a dict representation for the enhanced student data
+    enhanced_student = {
+        "id": student_data.id,
+        "user_id": student_data.user_id,
+        "name": user_name,
+        "email": user_email
+    }
+    
+    # Convert signup to dict and add enhanced student data
+    signup_dict = signup.__dict__.copy()
+    signup_dict["student"] = enhanced_student
+    
+    # Load demo if exists
+    if signup.demo_id:
+        demo = session.get(Demo, signup.demo_id)
+        signup_dict["demo"] = demo.__dict__ if demo else None
+    else:
+        signup_dict["demo"] = None
+    
+    return signup_dict
+
+
 def get_demo_signup_by_session_and_student(
     session: Session, session_id: int, student_id: int
 ) -> Optional[DemoSignup]:

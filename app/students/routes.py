@@ -744,7 +744,15 @@ def signup_for_demo_session(
     session.commit()
     session.refresh(signup)
     
-    return signup
+    # Get enhanced signup data with student name and email
+    enhanced_signup = crud.get_demo_signup_enhanced(session, signup.id)
+    if not enhanced_signup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve signup data"
+        )
+    
+    return enhanced_signup
 
 
 @router.get(
@@ -824,7 +832,15 @@ def update_my_demo_signup(
     session.commit()
     session.refresh(updated_signup)
     
-    return updated_signup
+    # Get enhanced signup data with student name and email
+    enhanced_signup = crud.get_demo_signup_enhanced(session, updated_signup.id)
+    if not enhanced_signup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve updated signup data"
+        )
+    
+    return enhanced_signup
 
 
 @router.delete(

@@ -1,5 +1,8 @@
 import os
 import httpx
+import secrets
+import hashlib
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Depends, status
 from fastapi.responses import RedirectResponse
 from app.integrations.wakatime import fetch_today_data, fetch_stats_range
@@ -14,6 +17,52 @@ from app.auth.auth import APIResponse
 # from app.integrations.scheduler import fetch_and_save_all_users_wakatime_data
 
 router = APIRouter()
+
+# In-memory state storage (in production, use Redis or database)
+oauth_states = {}
+
+def generate_oauth_state(user_id: int) -> str:
+    """Generate a cryptographically secure OAuth state parameter"""
+    # Generate random state
+    random_state = secrets.token_urlsafe(32)
+    
+    # Create state with user context
+    state_data = {
+        "user_id": user_id,
+        "timestamp": datetime.utcnow().isoformat(),
+        "random": random_state
+    }
+    
+    # Hash the state for security
+    state_hash = hashlib.sha256(f"{user_id}:{random_state}".encode()).hexdigest()
+    
+    # Store temporarily (expires in 10 minutes)
+    oauth_states[state_hash] = {
+        "user_id": user_id,
+        "expires": datetime.utcnow() + timedelta(minutes=10)
+    }
+    
+    return state_hash
+
+def validate_oauth_state(state: str, user_id: int) -> bool:
+    """Validate OAuth state parameter"""
+    if state not in oauth_states:
+        return False
+    
+    stored_state = oauth_states[state]
+    
+    # Check expiration
+    if datetime.utcnow() > stored_state["expires"]:
+        del oauth_states[state]
+        return False
+    
+    # Check user ID matches
+    if stored_state["user_id"] != user_id:
+        return False
+    
+    # Clean up used state
+    del oauth_states[state]
+    return True
 
 ## TESTING ONLY
 # @router.post("/wakatime/fetch-manual")
@@ -51,13 +100,12 @@ async def wakatime_today_for_user(
 
 
 @router.post(
-    "/wakatime/usage",
+    "/wakatime/stats-range",
     response_model=APIResponse,
-    summary="Get WakaTime usage stats for authenticated user",
+    summary="Get WakaTime stats for a date range",
 )
-async def wakatime_usage_for_user(
-    current_user: User = Depends(get_current_active_user),
-    session: Session = Depends(get_session),
+async def wakatime_stats_range(
+    start: str, end: str, current_user: User = Depends(get_current_active_user)
 ):
     if not current_user.wakatime_access_token_encrypted:
         return APIResponse(
@@ -65,17 +113,17 @@ async def wakatime_usage_for_user(
         )
 
     try:
-        data = await fetch_stats_range(current_user, session)
+        data = await fetch_stats_range(current_user, start, end)
         return APIResponse(
-            success=True, message="WakaTime usage data fetched successfully.", data=data
+            success=True, message="WakaTime stats fetched successfully.", data=data
         )
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Error fetching WakaTime usage data: {e}")
+        print(f"Error fetching WakaTime stats range: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching WakaTime usage data.",
+            detail="Error fetching WakaTime stats.",
         )
 
 
@@ -85,7 +133,8 @@ async def wakatime_usage_for_user(
 async def wakatime_authorize_for_user(
     current_user: User = Depends(get_current_active_user),
 ):
-    state_value = current_user.email
+    # Generate secure state parameter
+    state_value = generate_oauth_state(current_user.id)
 
     scopes = "email,read_logged_time,read_stats"
 
@@ -138,18 +187,15 @@ async def wakatime_callback(
             detail="Missing authorization code from WakaTime callback",
         )
 
-    # CRITICAL: Verify the state to prevent CSRF and ensure user consistency.
-    # The state sent to WakaTime during /authorize should match what's received here.
-    # Assuming state was current_user.email (or str(current_user.id)).
-    expected_state = current_user.email  # Or str(current_user.id) if that was used
-    if state_from_wakatime != expected_state:
+    # CRITICAL: Validate the state parameter using secure validation
+    if not validate_oauth_state(state_from_wakatime, current_user.id):
         # Log this potential security event
         print(
-            f"WakaTime callback state mismatch for user {current_user.email}. Expected: {expected_state}, Got: {state_from_wakatime}"
+            f"WakaTime callback state validation failed for user {current_user.email}. State: {state_from_wakatime}"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid state parameter. WakaTime authorization may be compromised.",
+            detail="Invalid or expired state parameter. Please restart the authorization process.",
         )
 
     # Exchange code for access token
@@ -191,28 +237,27 @@ async def wakatime_callback(
         refresh_token = token_data.get("refresh_token")  # WakaTime might provide this
         # expires_in = token_data.get("expires_in") # And expiry
         # granted_scopes = token_data.get("scope")
-    except httpx.RequestError as exc:
-        # Log exc for debugging server-side
-        print(f"Request to WakaTime /oauth/token failed: {exc}")
+
+        if not access_token:
+            print(
+                f"WakaTime token exchange succeeded but no access_token in response: {response_text_debug}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="WakaTime access token not found in response.",
+            )
+
+    except httpx.HTTPError as e:
+        print(f"HTTP error during WakaTime token exchange: {e}")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not connect to WakaTime to exchange token.",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to communicate with WakaTime server.",
         )
-    except Exception as exc:  # Catch other errors like JSONDecodeError
-        print(
-            f"Error during WakaTime token exchange or JSON parsing: {exc}, Response text: {response_text_debug}"
-        )
+    except Exception as e:
+        print(f"Unexpected error during WakaTime token exchange: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during WakaTime token exchange.",
-        )
-
-    if not access_token:
-        # Log token_data for debugging
-        print(f"WakaTime access_token not found in response: {token_data}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Access token not found in WakaTime's response",
+            detail="Unexpected error during WakaTime authorization.",
         )
 
     # Encrypt & save tokens to the already authenticated current_user

@@ -342,7 +342,6 @@ async def get_all_batches(db: Session = Depends(get_session)):
     
     try:
         batches = admin_crud.get_all_batches(db)
-        print("batches:", batches)
         batch_infos = [BatchInfo.model_validate(batch) for batch in batches]
         
         return APIResponse(
@@ -525,13 +524,14 @@ def list_demo_sessions(
     summary="Create Demo Session",
     tags=["Demo Sessions"],
 )
-def create_demo_session(
+async def create_demo_session(
     demo_session_create: DemoSessionCreate,
     session: Session = Depends(get_session),
     current_user: UserSchema = Depends(get_current_admin_user),
 ):
-    """Create a new demo session"""
+    """Create a new demo session with manual meeting link entry and optional Slack notification"""
     from app.students.crud import create_demo_session, get_demo_session_by_date
+    from app.integrations.slack import send_demo_session_notification
     
     # Check if session already exists for this date
     existing_session = get_demo_session_by_date(
@@ -543,9 +543,28 @@ def create_demo_session(
             detail="Demo session already exists for this date"
         )
     
+    # Create the demo session
     demo_session = create_demo_session(session, demo_session_create)
     session.commit()
     session.refresh(demo_session)
+    
+    # Send Slack notification only if meeting link is provided
+    if demo_session.zoom_link:
+        try:
+            # Format session time for display
+            session_time_str = demo_session.session_time.strftime("%I:%M %p")
+            
+            await send_demo_session_notification(
+                session_date=demo_session.session_date,
+                session_title=demo_session.title,
+                meeting_link=demo_session.zoom_link,
+                description=demo_session.description,
+                session_time=session_time_str
+            )
+            print("Slack notification sent successfully")
+        except Exception as e:
+            print(f"Failed to send Slack notification: {e}")
+            # Continue even if Slack notification fails
     
     # Convert to response format
     session_dict = demo_session.dict()
@@ -687,7 +706,7 @@ def update_signup_admin(
     current_user: UserSchema = Depends(get_current_admin_user),
 ):
     """Update signup after presentation (admin only)"""
-    from app.students.crud import get_demo_signup, update_demo_signup_admin
+    from app.students.crud import get_demo_signup, update_demo_signup_admin, get_demo_signup_enhanced
     
     db_signup = get_demo_signup(session, signup_id)
     if not db_signup:
@@ -700,7 +719,15 @@ def update_signup_admin(
     session.commit()
     session.refresh(updated_signup)
     
-    return updated_signup
+    # Get enhanced signup data with student name and email
+    enhanced_signup = get_demo_signup_enhanced(session, updated_signup.id)
+    if not enhanced_signup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve updated signup data"
+        )
+    
+    return enhanced_signup
 
 
 # --- Bulk Operations ---

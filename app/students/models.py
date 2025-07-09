@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import UniqueConstraint
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date, datetime, time
 import uuid
 
 
@@ -104,6 +104,7 @@ class DemoSession(SQLModel, table=True):
     
     id: Optional[int] = Field(default=None, primary_key=True)
     session_date: date = Field(index=True)  # The Friday date
+    session_time: time = Field(default=time(15, 0))  # Default 3 PM Central Time
     
     # Session configuration
     is_active: bool = Field(default=True)  # Can students sign up?
@@ -114,6 +115,7 @@ class DemoSession(SQLModel, table=True):
     title: Optional[str] = Field(default="Friday Demo Session")
     description: Optional[str] = None
     notes: Optional[str] = None  # Admin notes about the session
+    zoom_link: Optional[str] = None  # Zoom meeting link for the session
     
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
