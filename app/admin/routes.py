@@ -342,7 +342,6 @@ async def get_all_batches(db: Session = Depends(get_session)):
     
     try:
         batches = admin_crud.get_all_batches(db)
-        print("batches:", batches)
         batch_infos = [BatchInfo.model_validate(batch) for batch in batches]
         
         return APIResponse(

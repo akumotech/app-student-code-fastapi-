@@ -1,9 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from app.auth.auth import router as auth_router
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.openapi.utils import get_openapi
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 ## local imports
 from app.integrations.routes import router as integrations_router
@@ -13,6 +16,9 @@ from app.auth.utils import verify_access_token
 from app.integrations.scheduler import start_scheduler
 from app.config import settings
 from app.analytics.routes import router as analytics_router
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Make EXCLUDE_PATHS a global or accessible constant for custom_openapi
 EXCLUDE_PATHS_FOR_OPENAPI = [
@@ -27,6 +33,74 @@ EXCLUDE_PATHS_FOR_OPENAPI = [
 # Also, consider if the root path "/" or "/health" should be excluded.
 
 app = FastAPI()
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        
+        # Add HSTS in production
+        if settings.ENVIRONMENT == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # Content Security Policy
+        csp_policy = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https://wakatime.com; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+        response.headers["Content-Security-Policy"] = csp_policy
+        
+        return response
+
+# Request size and security middleware
+class SecurityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Check request size limit (10MB max)
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request too large"}
+            )
+        
+        # Check content type for POST/PUT requests
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_type = request.headers.get("content-type", "")
+            allowed_types = [
+                "application/json",
+                "application/x-www-form-urlencoded",
+                "multipart/form-data"
+            ]
+            if not any(allowed_type in content_type for allowed_type in allowed_types):
+                return JSONResponse(
+                    status_code=415,
+                    content={"detail": "Unsupported content type"}
+                )
+        
+        return await call_next(request)
+
+# Add security middleware
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
