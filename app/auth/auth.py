@@ -31,9 +31,7 @@ router = APIRouter()
 
 
 @router.get("/users/me", response_model=UserSchema)
-async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session), request: Request = None):
-    if request is not None:
-        print("Incoming cookies:", request.cookies)
+async def read_users_me(current_user: UserSchema = Depends(get_current_active_user), db: Session = Depends(get_session)):
     # Try to find a student record for this user
     student = get_student_by_user_id(db, current_user.id)
     user_dict = current_user.dict()

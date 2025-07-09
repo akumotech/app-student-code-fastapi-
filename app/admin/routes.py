@@ -707,7 +707,7 @@ def update_signup_admin(
     current_user: UserSchema = Depends(get_current_admin_user),
 ):
     """Update signup after presentation (admin only)"""
-    from app.students.crud import get_demo_signup, update_demo_signup_admin
+    from app.students.crud import get_demo_signup, update_demo_signup_admin, get_demo_signup_enhanced
     
     db_signup = get_demo_signup(session, signup_id)
     if not db_signup:
@@ -720,7 +720,15 @@ def update_signup_admin(
     session.commit()
     session.refresh(updated_signup)
     
-    return updated_signup
+    # Get enhanced signup data with student name and email
+    enhanced_signup = get_demo_signup_enhanced(session, updated_signup.id)
+    if not enhanced_signup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve updated signup data"
+        )
+    
+    return enhanced_signup
 
 
 # --- Bulk Operations ---
