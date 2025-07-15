@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from app.auth.models import User
 from app.auth.database import get_session
 from app.auth.utils import get_current_active_user
-from app.integrations.model import WakaTimeCallbackPayload
+from app.integrations.model import WakaTimeCallbackPayload, WakaTimeStatsRangeRequest
 from app.config import settings
 from app.auth.auth import APIResponse
 # from app.integrations.scheduler import fetch_and_save_all_users_wakatime_data
@@ -105,7 +105,9 @@ async def wakatime_today_for_user(
     summary="Get WakaTime stats for a date range",
 )
 async def wakatime_stats_range(
-    start: str, end: str, current_user: User = Depends(get_current_active_user)
+    request: WakaTimeStatsRangeRequest,
+    current_user: User = Depends(get_current_active_user),
+    session: Session = Depends(get_session)
 ):
     if not current_user.wakatime_access_token_encrypted:
         return APIResponse(
@@ -113,7 +115,7 @@ async def wakatime_stats_range(
         )
 
     try:
-        data = await fetch_stats_range(current_user, start, end)
+        data = await fetch_stats_range(current_user, session, request.start, request.end)
         return APIResponse(
             success=True, message="WakaTime stats fetched successfully.", data=data
         )
@@ -235,8 +237,12 @@ async def wakatime_callback(
         token_data = response.json()
         access_token = token_data.get("access_token")
         refresh_token = token_data.get("refresh_token")  # WakaTime might provide this
-        # expires_in = token_data.get("expires_in") # And expiry
-        # granted_scopes = token_data.get("scope")
+        expires_in = token_data.get("expires_in")
+        granted_scopes = token_data.get("scope")
+        
+      
+        if refresh_token:
+            print(f"- Refresh token length: {len(refresh_token)}")
 
         if not access_token:
             print(
@@ -276,6 +282,9 @@ async def wakatime_callback(
             current_user.wakatime_refresh_token_encrypted = settings.fernet.encrypt(
                 refresh_token.encode("utf-8")
             ).decode("utf-8")
+            print(f"Saved refresh token for user {current_user.email}")
+        else:
+            print(f"WARNING: No refresh token received for user {current_user.email}. Token refresh will not be available.")
 
         session.add(current_user)  # Add current_user to session to track changes
         session.commit()
