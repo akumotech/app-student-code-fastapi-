@@ -11,6 +11,11 @@ class WakaTimeCallbackPayload(BaseModel):
     state: str | None = None
 
 
+class WakaTimeStatsRangeRequest(BaseModel):
+    start: str
+    end: str
+
+
 # WakaTimeUsageRequest is no longer used by routes.py, removed.
 # class WakaTimeUsageRequest(BaseModel):
 #     email: EmailStr

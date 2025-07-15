@@ -15,6 +15,10 @@ async def refresh_wakatime_token(user: User, session: Session) -> str:
         print(
             f"User {user.email} attempted WakaTime token refresh without a refresh token."
         )
+        # Clear the access token as well since we can't refresh it
+        user.wakatime_access_token_encrypted = None
+        session.add(user)
+        session.commit()
         raise HTTPException(
             status_code=400,
             detail="WakaTime refresh token not available. Please re-authorize.",
@@ -24,9 +28,15 @@ async def refresh_wakatime_token(user: User, session: Session) -> str:
         refresh_token = settings.fernet.decrypt(
             user.wakatime_refresh_token_encrypted.encode("utf-8")
         ).decode("utf-8")
+        print(f"Successfully decrypted refresh token for user {user.email}")
     except Exception as e:
         # Log decryption error
         print(f"Error decrypting WakaTime refresh token for user {user.email}: {e}")
+        # Clear invalid tokens
+        user.wakatime_access_token_encrypted = None
+        user.wakatime_refresh_token_encrypted = None
+        session.add(user)
+        session.commit()
         raise HTTPException(
             status_code=500,
             detail="Failed to process WakaTime refresh token. Please re-authorize.",
@@ -53,9 +63,16 @@ async def refresh_wakatime_token(user: User, session: Session) -> str:
         )
         # If 400/401, often means bad refresh token -> re-auth needed
         if exc.response.status_code in [400, 401]:
+            # Clear invalid tokens from database
+            print(f"Clearing invalid WakaTime tokens for user {user.email}")
+            user.wakatime_access_token_encrypted = None
+            user.wakatime_refresh_token_encrypted = None
+            session.add(user)
+            session.commit()
+            
             raise HTTPException(
                 status_code=400,
-                detail="Failed to refresh WakaTime token. Please re-authorize WakaTime.",
+                detail="WakaTime tokens are invalid. Please re-authorize WakaTime integration.",
             )
         raise HTTPException(
             status_code=502,
@@ -92,9 +109,13 @@ async def refresh_wakatime_token(user: User, session: Session) -> str:
         user.wakatime_refresh_token_encrypted = settings.fernet.encrypt(
             new_refresh_token.encode("utf-8")
         ).decode("utf-8")
+        print(f"Updated refresh token for user {user.email}")
+    else:
+        print(f"WARNING: No new refresh token received for user {user.email}")
 
     session.add(user)  # Mark user as dirty for the calling session to commit
     # DO NOT COMMIT HERE
+    print(f"Token refresh successful for user {user.email}")
     return new_access_token
 
 
@@ -131,6 +152,8 @@ async def wakatime_api_request(
             )
             try:
                 new_access_token = await refresh_wakatime_token(user, session)
+                # Commit the token changes
+                session.commit()
                 headers["Authorization"] = f"Bearer {new_access_token}"
                 # Retry the request with the new token
                 response = await client.request(method, url, headers=headers, **kwargs)
@@ -148,14 +171,11 @@ async def fetch_today_data(user: User, session: Session):
     return await wakatime_api_request(user, session, "GET", url)
 
 
-async def fetch_stats_range(user: User, session: Session):
-    """Fetch WakaTime stats for today and the 6 days before."""
-    end_date = datetime.utcnow().date()
-    start_date = end_date - timedelta(days=6)
-
+async def fetch_stats_range(user: User, session: Session, start: str, end: str):
+    """Fetch WakaTime stats for a specified date range."""
     url = (
         f"https://wakatime.com/api/v1/users/current/summaries"
-        f"?start={start_date}&end={end_date}"
+        f"?start={start}&end={end}"
     )
     return await wakatime_api_request(user, session, "GET", url)
 
